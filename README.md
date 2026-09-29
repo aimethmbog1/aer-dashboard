@@ -36,9 +36,11 @@ pages/
   4_🌍_Répartition_régionale.py     Répartition par antenne / région / département
   5_🏢_Organigramme.py              Hiérarchie du réseau d'antennes (icicle chart)
   6_📝_Notes.py                     Notes & méthodologie (recherche plein texte)
+  7_💰_Fonds_revolving.py           Suivi du fonds revolving (Composante 3 du PERACE)
 utils/
   data.py                            Lecture et parsing du classeur (mise en cache)
   geo.py                             Distances (Haversine) et centroïdes d'antenne
+  revolving.py                       Personnel de suivi & registre du fonds revolving
   ui.py                              Composants d'interface & thème partagés
   loader.py                          Chargement du fichier, partagé entre les pages
 data.xlsx                            Classeur AER fourni par défaut
@@ -70,6 +72,29 @@ les données permettent réellement :
   sur la page « Équipes terrain », et la table de fréquence de visite du
   référentiel RH est quand même montrée en clair (non géolocalisée) sur la page
   carte, avec le même avertissement.
+
+## Le fonds revolving (Composante 3 du PERACE) — ce qu'il fait et ce qu'il ne fait pas
+
+Le classeur Excel ne contient aucune donnée sur ce fonds : c'est un mécanisme distinct, financé par la
+Banque mondiale (crédit IDA, Composante 3 du projet PERACE, P163881), qui aide les ménages à payer les
+frais initiaux de raccordement au réseau électrique (extension réseau ENEO), séparément du parc de
+mini-centrales solaires documenté ailleurs dans l'application.
+
+- **Personnel de suivi** : la répartition réelle par délégation régionale (DCUD, DCUY, DRC, DRE, DRNEA,
+  DRONO, DRSANO, DRSM, DRSOM) et délégation commerciale, avec les 28 agents nommément assignés.
+- **Registre des dossiers** : démarre **vide** — ce n'est pas une base de vrais dossiers (non publique),
+  mais un outil de saisie que vous alimentez au fil de l'eau (formulaire d'ajout avec sélection en
+  cascade région → zone → agent, tableau éditable pour corriger ou supprimer une ligne).
+- **Valeurs de référence** pré-remplies dans le formulaire (frais initial 2 000 FCFA, remboursement sur
+  6 à 8 ans) : documentées dans les rapports de projet de la Banque mondiale, pas des données déjà
+  enregistrées.
+- **Indicateurs et graphiques** (montants engagés/remboursés par délégation, taux de recouvrement,
+  charge par agent) sont calculés en direct, uniquement à partir des dossiers que vous avez saisis.
+- **Persistance** : Streamlit ne conserve rien entre deux sessions. Téléchargez le registre en CSV avant
+  de fermer, et rechargez-le à l'ouverture suivante via le bouton dédié.
+- **Découpage indépendant de la carte solaire** : les délégations régionales de ce fonds sont une
+  organisation commerciale ENEO/AER différente des 9 antennes du réseau solaire — volontairement non
+  superposées, pour la même raison de rigueur des données que sur la page Carte.
 
 ## Points de conception
 
