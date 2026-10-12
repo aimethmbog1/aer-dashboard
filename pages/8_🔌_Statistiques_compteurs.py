@@ -95,11 +95,11 @@ if uploaded_files:
             colonnes = list(brut.columns)
             col_localite = st.sidebar.selectbox("Colonne → Localité", colonnes, key="cpt_map_localite")
             col_date = st.sidebar.selectbox("Colonne → Date d'installation", colonnes, key="cpt_map_date")
-            col_site = st.sidebar.selectbox("Colonne → Site/Région (optionnel)", ["(aucune)"] + colonnes, key="cpt_map_site")
+            col_poste = st.sidebar.selectbox("Colonne → Poste (optionnel)", ["(aucune)"] + colonnes, key="cpt_map_poste")
             col_type = st.sidebar.selectbox("Colonne → Type de compteur (optionnel)", ["(aucune)"] + colonnes, key="cpt_map_type")
             mapping = {
                 "localite": col_localite, "date_installation": col_date,
-                "site": None if col_site == "(aucune)" else col_site,
+                "poste": None if col_poste == "(aucune)" else col_poste,
                 "type_compteur": None if col_type == "(aucune)" else col_type,
             }
             df_brut, n_rejetees = apply_column_mapping(brut, mapping)
@@ -135,7 +135,7 @@ if df.empty:
 # =============================================================================
 total = len(df)
 nb_localites = df["localite"].nunique()
-nb_sites = df["site"].nunique() if "site" in df else None
+nb_postes = df["poste"].nunique() if "poste" in df else None
 derniere_periode = df["periode"].max()
 nb_solaire = int(df["solaire"].sum()) if "solaire" in df else 0
 taux_solaire = f"{nb_solaire / total * 100:.0f} %" if total else "—"
@@ -143,7 +143,7 @@ taux_solaire = f"{nb_solaire / total * 100:.0f} %" if total else "—"
 kpi_row([
     ("🔌 Compteurs installés", f"{total:,}".replace(",", " "), None),
     ("📍 Localités couvertes", f"{nb_localites}", None),
-    ("🗺️ Sites couverts", f"{nb_sites}" if nb_sites else "—", None),
+    ("🗺️ Postes couverts", f"{nb_postes}" if nb_postes else "—", None),
     ("📅 Dernière période", derniere_periode.strftime("%m/%Y") if pd.notna(derniere_periode) else "—", None),
     ("☀️ Compteurs solaires", taux_solaire, None),
 ])
@@ -189,15 +189,15 @@ with tab_vue:
 # -----------------------------------------------------------------------
 with tab_localite:
     df_loc = df
-    if "site" in df_loc and df_loc["site"].nunique() > 1:
-        sites = sorted(df_loc["site"].dropna().unique().tolist())
-        # La clé inclut la liste des sites : si le jeu de données change (nouveaux fichiers
+    if "poste" in df_loc and df_loc["poste"].nunique() > 1:
+        postes = sorted(df_loc["poste"].dropna().unique().tolist())
+        # La clé inclut la liste des postes : si le jeu de données change (nouveaux fichiers
         # déposés, ou bascule exemple → réel), Streamlit traite le filtre comme un nouveau
         # widget et resélectionne tout par défaut, au lieu de garder une ancienne sélection
         # devenue invalide (qui se traduirait par un filtre vide et silencieux).
-        cle_filtre = "cpt_site_filter_" + str(abs(hash(tuple(sites))))
-        choix_sites = st.multiselect("Filtrer par site", sites, default=sites, key=cle_filtre)
-        df_loc = df_loc[df_loc["site"].isin(choix_sites)]
+        cle_filtre = "cpt_poste_filter_" + str(abs(hash(tuple(postes))))
+        choix_postes = st.multiselect("Filtrer par poste", postes, default=postes, key=cle_filtre)
+        df_loc = df_loc[df_loc["poste"].isin(choix_postes)]
 
     if df_loc.empty:
         st.warning("Aucune localité ne correspond au filtre choisi.")
@@ -231,13 +231,13 @@ with tab_localite:
         fig = plotly_base_layout(fig, height=max(360, 28 * len(affichage)), legend=False)
         st.plotly_chart(fig, use_container_width=True)
 
-        if "site" in df_loc and df_loc["site"].nunique() > 1:
-            section_title("RÉPARTITION PAR SITE")
-            par_site = df_loc["site"].value_counts().reset_index()
-            par_site.columns = ["Site", "Compteurs installés"]
-            fig_r = px.bar(par_site.sort_values("Compteurs installés"), x="Compteurs installés", y="Site",
+        if "poste" in df_loc and df_loc["poste"].nunique() > 1:
+            section_title("RÉPARTITION PAR POSTE")
+            par_poste = df_loc["poste"].value_counts().reset_index()
+            par_poste.columns = ["Poste", "Compteurs installés"]
+            fig_r = px.bar(par_poste.sort_values("Compteurs installés"), x="Compteurs installés", y="Poste",
                            orientation="h", color_discrete_sequence=[BLUE])
-            fig_r = plotly_base_layout(fig_r, height=max(280, 32 * len(par_site)), legend=False)
+            fig_r = plotly_base_layout(fig_r, height=max(280, 32 * len(par_poste)), legend=False)
             st.plotly_chart(fig_r, use_container_width=True)
 
         if "type_compteur" in df_loc and df_loc["type_compteur"].nunique() > 1:
@@ -359,7 +359,7 @@ with tab_croisement:
 st.write("")
 if not donnees_exemple:
     with st.expander("📄 Export complet des compteurs (toutes colonnes nettoyées)"):
-        colonnes_export = [c for c in ["numero_compteur", "localite", "site", "categorie", "type_compteur",
+        colonnes_export = [c for c in ["numero_compteur", "localite", "poste", "categorie", "type_compteur",
                                         "solaire", "periode", "nom_fichier"] if c in df.columns]
         st.dataframe(df[colonnes_export], use_container_width=True, hide_index=True, height=400)
         st.download_button("⬇️ Télécharger toutes les lignes (CSV)", df[colonnes_export].to_csv(index=False).encode("utf-8"),

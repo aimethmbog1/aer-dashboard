@@ -111,20 +111,30 @@ l'application.
   Chaque fichier correspond en réalité à un **lot d'abonnés** exporté à une date donnée, et c'est **la
   date présente dans le nom du fichier** (ex. `01-10-2024.xls`) qui sert de période d'installation pour
   toutes ses lignes — convention confirmée pour ces fichiers, affichée et modifiable avant de lancer les
-  statistiques, avec un tableau de traçabilité par lot pour la vérifier.
+  statistiques, avec un tableau de traçabilité par lot pour la vérifier. Sa colonne `Holley System ID`
+  (ex. « 31K433 ») est un **poste** — l'équipement/poste de configuration Holley ayant servi à
+  enregistrer les compteurs — et non un site géographique : le vrai équivalent « site » du reste du
+  tableau de bord AER, c'est ici la **localité**, qui est d'ailleurs rapprochée des 499 sites officiels
+  du parc solaire (voir ci-dessous).
 - **Qualité des localités** : les noms de localités des fichiers réels contiennent de nombreuses
-  variantes d'orthographe (coquilles, casse, espaces, noms dupliqués) — un regroupement est **suggéré**
-  par similarité de texte, mais rien n'est fusionné sans validation explicite dans le tableau éditable
+  variantes d'orthographe (coquilles, casse, espaces, noms dupliqués). La correction suggérée se fait en
+  deux passes : d'abord un rapprochement avec `data/sites_officiels_aer.csv` (les 499 sites du parc
+  solaire, extraits de ce même classeur — feuille « Données sites »), pour reprendre l'orthographe
+  officielle quand la ressemblance est forte (ex. `DOUKOUR0Y` → `Doukouroy`) ; puis un regroupement par
+  similarité de texte pour les localités restantes. La colonne « Origine de la correction » indique
+  laquelle des deux s'applique, et rien n'est fusionné sans validation explicite dans le tableau éditable
   de la barre latérale.
 - **Quatre angles d'analyse** : vue d'ensemble (KPI + traçabilité par lot), par localité (avec filtre par
-  site, répartition par type de compteur réseau/solaire), par période (granularité mois/trimestre/année,
+  poste, répartition par type de compteur réseau/solaire), par période (granularité mois/trimestre/année,
   cumul dans le temps), et un croisement localité × période (carte de chaleur) pour repérer où et quand
   l'effort d'installation s'est concentré.
 - **Persistance** : comme pour le Fonds revolving, rien n'est conservé entre deux sessions — tous les
   tableaux (par localité, par période, croisement, export complet) se téléchargent en CSV.
-- **Découpage indépendant du reste de l'application** : les « sites » de ce suivi viennent du système
+- **Découpage indépendant du reste de l'application** : les « postes » de ce suivi viennent du système
   Holley et ne sont pas automatiquement recoupés avec les antennes du réseau solaire ni les délégations
-  du Fonds revolving, pour la même raison de rigueur des données que sur les autres pages.
+  du Fonds revolving, pour la même raison de rigueur des données que sur les autres pages. Les
+  « localités », elles, sont bien rapprochées des 499 sites officiels du parc solaire quand la
+  ressemblance est forte (voir ci-dessus).
 
 ## Points de conception
 
