@@ -45,67 +45,13 @@ revolving)."""
 from __future__ import annotations
 
 import difflib
-import random
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-
-# ---------------------------------------------------------------------------
-# Jeu de données d'exemple (utilisé uniquement si aucun fichier n'est fourni)
-# ---------------------------------------------------------------------------
-LOCALITES_EXEMPLE = {
-    "Adamaoua": ["Ngaoundéré", "Tibati", "Meiganga"],
-    "Centre": ["Obala", "Mfou", "Bafia", "Monatélé"],
-    "Est": ["Bertoua", "Abong-Mbang", "Batouri"],
-    "Extrême-Nord": ["Maroua", "Kousseri", "Mokolo"],
-    "Littoral": ["Nkongsamba", "Yabassi"],
-    "Nord": ["Garoua", "Guider", "Poli"],
-    "Nord-Ouest": ["Bamenda", "Wum"],
-    "Ouest": ["Bafoussam", "Dschang", "Bangangté"],
-    "Sud": ["Ebolowa", "Sangmélima"],
-    "Sud-Ouest": ["Buea", "Kumba"],
-}
-TYPES_COMPTEUR_EXEMPLE = ["RESEAU", "RESEAU", "RESEAU", "SOLAR"]
-
-
-@st.cache_data(show_spinner=False)
-def generate_sample_data(n: int = 650, seed: int = 42) -> pd.DataFrame:
-    """Jeu de données fictif (localités et dates imaginaires), affiché
-    uniquement tant qu'aucun fichier réel n'est déposé — jamais présenté
-    comme une vraie mesure, exactement comme le registre vide du Fonds
-    revolving avant toute saisie."""
-    rng = random.Random(seed)
-    debut, fin = date(2022, 1, 1), date(2026, 10, 1)
-    jours_total = (fin - debut).days
-    # Postes fictifs (codes courts, à l'image des identifiants de poste/configuration
-    # Holley réels comme « 31K433 ») — une région imaginaire par poste, uniquement pour
-    # varier l'exemple ; le poste n'est PAS la localité (voir docstring du module).
-    postes_exemple = {region: f"P-{region[:3].upper()}" for region in LOCALITES_EXEMPLE}
-    rows = []
-    for i in range(n):
-        region = rng.choice(list(LOCALITES_EXEMPLE.keys()))
-        localite = rng.choice(LOCALITES_EXEMPLE[region])
-        jours_offset = (rng.randint(max(0, jours_total - 540), jours_total) if rng.random() < 0.55
-                        else rng.randint(0, jours_total))
-        d = debut + timedelta(days=jours_offset)
-        type_compteur = rng.choice(TYPES_COMPTEUR_EXEMPLE)
-        rows.append({
-            "numero_compteur": f"CPT-{10000 + i}",
-            "localite_brute": localite.upper(),
-            "localite": localite.upper(),
-            "poste": postes_exemple[region],
-            "categorie": "MENAGES",
-            "type_compteur": type_compteur,
-            "solaire": type_compteur == "SOLAR",
-            "periode": pd.Timestamp(d).to_period("M").to_timestamp(),
-            "nom_fichier": "(jeu d'exemple)",
-        })
-    return pd.DataFrame(rows)
-
 
 # ---------------------------------------------------------------------------
 # Format Holley (format réel des fichiers fournis par l'AER)

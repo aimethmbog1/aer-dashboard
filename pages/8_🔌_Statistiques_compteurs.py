@@ -9,9 +9,9 @@ from utils.data import NAVY, BLUE, GOLD, RED, GREEN, AMBER, GREY
 from utils.loader import get_data
 from utils.ui import PAGE_ICON, inject_base_style, section_title, plotly_base_layout, kpi_row, render_sidebar_footer
 from utils.compteurs import (
-    generate_sample_data, read_excel_sheet_names, load_excel,
+    read_excel_sheet_names, load_excel,
     est_format_holley, parse_date_from_filename, build_from_holley_files,
-    apply_column_mapping, locality_cleanup_ui, lot_summary,
+    apply_column_mapping, locality_cleanup_ui, lot_summary, load_official_sites,
 )
 
 st.set_page_config(page_title="Statistiques des compteurs — AER", page_icon=PAGE_ICON, layout="wide")
@@ -115,16 +115,27 @@ if uploaded_files:
     if df_brut is not None and not df_brut.empty:
         df = locality_cleanup_ui(df_brut)
 
-donnees_exemple = df is None
-if donnees_exemple:
+if df is None:
     st.sidebar.info(
-        "Aucun fichier chargé — cette page tourne pour l'instant sur un **jeu de données d'exemple** "
-        "(localités et dates fictives), juste pour montrer le fonctionnement. Dépose tes fichiers Excel "
-        "ci-dessus dès qu'ils sont prêts."
+        "Aucun fichier chargé — cette page démarre **vide, sans aucune donnée fictive**. Dépose tes "
+        "fichiers Excel ci-dessus pour voir tes vraies statistiques de compteurs."
     )
-    df = generate_sample_data()
-    st.caption("ℹ️ Statistiques construites sur le **jeu de données d'exemple** — dépose tes fichiers Excel "
-               "dans la barre latérale pour voir tes vrais chiffres.")
+    st.info(
+        "Aucune donnée de compteurs pour l'instant. En attendant, voici les **localités officielles du "
+        "parc solaire AER** que cette page reconnaît et vers lesquelles elle corrige automatiquement "
+        "les noms détectés dans tes fichiers Holley — aucune n'a encore de compteur installé ici."
+    )
+    sites_ref = load_official_sites()
+    if not sites_ref.empty:
+        st.write("")
+        section_title(f"{len(sites_ref)} LOCALITÉS OFFICIELLES DU PARC SOLAIRE AER, PAR RÉGION")
+        renommage = {"nom": "Localité", "region": "Région", "departement": "Département", "antenne": "Antenne"}
+        colonnes_aff = [c for c in ["nom", "region", "departement", "antenne"] if c in sites_ref.columns]
+        affichage_ref = sites_ref[colonnes_aff].rename(columns=renommage)
+        tri = [c for c in ["Région", "Localité"] if c in affichage_ref.columns]
+        affichage_ref = affichage_ref.sort_values(tri) if tri else affichage_ref
+        st.dataframe(affichage_ref, use_container_width=True, hide_index=True, height=450)
+    st.stop()
 
 if df.empty:
     st.info("Aucune donnée à afficher.")
@@ -174,7 +185,7 @@ with tab_vue:
     fig2.update_xaxes(title=None)
     st.plotly_chart(fig2, use_container_width=True)
 
-    if not donnees_exemple and "nom_fichier" in df.columns and df["nom_fichier"].nunique() > 0:
+    if "nom_fichier" in df.columns and df["nom_fichier"].nunique() > 0:
         section_title("TRAÇABILITÉ PAR LOT — UN FICHIER DÉPOSÉ = UN LOT D'ABONNÉS")
         st.caption("Vérifie ici que la période détectée depuis le nom de chaque fichier est cohérente avec "
                    "le lot qu'il contient.")
@@ -357,12 +368,11 @@ with tab_croisement:
                                 "compteurs_localite_x_periode.csv", "text/csv", key="cpt_dl_croisement")
 
 st.write("")
-if not donnees_exemple:
-    with st.expander("📄 Export complet des compteurs (toutes colonnes nettoyées)"):
-        colonnes_export = [c for c in ["numero_compteur", "localite", "poste", "categorie", "type_compteur",
-                                        "solaire", "periode", "nom_fichier"] if c in df.columns]
-        st.dataframe(df[colonnes_export], use_container_width=True, hide_index=True, height=400)
-        st.download_button("⬇️ Télécharger toutes les lignes (CSV)", df[colonnes_export].to_csv(index=False).encode("utf-8"),
-                            f"compteurs_export_{date.today().isoformat()}.csv", "text/csv", key="cpt_dl_export")
+with st.expander("📄 Export complet des compteurs (toutes colonnes nettoyées)"):
+    colonnes_export = [c for c in ["numero_compteur", "localite", "poste", "categorie", "type_compteur",
+                                    "solaire", "periode", "nom_fichier"] if c in df.columns]
+    st.dataframe(df[colonnes_export], use_container_width=True, hide_index=True, height=400)
+    st.download_button("⬇️ Télécharger toutes les lignes (CSV)", df[colonnes_export].to_csv(index=False).encode("utf-8"),
+                        f"compteurs_export_{date.today().isoformat()}.csv", "text/csv", key="cpt_dl_export")
 
 render_sidebar_footer(data.generated_on if data else "")
