@@ -5,13 +5,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from utils.data import NAVY, BLUE, GOLD, RED, GREEN, AMBER, GREY
+from utils.data import NAVY, BLUE, GOLD, RED, GREEN, AMBER, GREY, CATEGORICAL
 from utils.loader import get_data
 from utils.ui import PAGE_ICON, inject_base_style, section_title, plotly_base_layout, kpi_row, render_sidebar_footer
 from utils.compteurs import (
     read_excel_sheet_names, load_excel,
     est_format_holley, parse_date_from_filename, build_from_holley_files,
     apply_column_mapping, locality_cleanup_ui, lot_summary, load_official_sites,
+    default_phases, assign_phases,
 )
 
 st.set_page_config(page_title="Statistiques des compteurs — AER", page_icon=PAGE_ICON, layout="wide")
@@ -142,6 +143,31 @@ if df.empty:
     st.stop()
 
 # =============================================================================
+# Barre latérale — phases du projet (aucune colonne « phase » n'existe dans
+# les exports Holley : les plages de dates sont définies et ajustées ici)
+# =============================================================================
+st.sidebar.markdown("### 🏗️ Phases du projet")
+if "cpt_phases_df" not in st.session_state:
+    st.session_state["cpt_phases_df"] = default_phases(df)
+with st.sidebar.expander("Définir les phases (dates éditables)", expanded=False):
+    st.caption(
+        "Chaque compteur est classé dans la phase dont la plage de dates couvre sa période "
+        "d'installation. Les plages ci-dessous sont un point de départ (3 tiers égaux) — "
+        "corrige-les avec les vraies dates de chaque phase du projet, ajoute ou supprime des lignes."
+    )
+    phases_editees = st.data_editor(
+        st.session_state["cpt_phases_df"], num_rows="dynamic", hide_index=True, use_container_width=True,
+        column_config={
+            "Phase": st.column_config.TextColumn("Phase", required=True),
+            "Début": st.column_config.DateColumn("Début", format="DD/MM/YYYY"),
+            "Fin": st.column_config.DateColumn("Fin", format="DD/MM/YYYY"),
+        },
+        key="cpt_phases_editor",
+    )
+    st.session_state["cpt_phases_df"] = phases_editees
+df["phase"] = assign_phases(df, phases_editees)
+
+# =============================================================================
 # KPI globaux
 # =============================================================================
 total = len(df)
@@ -161,8 +187,8 @@ kpi_row([
 
 st.write("")
 
-tab_vue, tab_localite, tab_periode, tab_croisement = st.tabs([
-    "📊 Vue d'ensemble", "📍 Par localité", "📅 Par période", "🧭 Localité × période",
+tab_vue, tab_localite, tab_periode, tab_croisement, tab_phase = st.tabs([
+    "📊 Vue d'ensemble", "📍 Par localité", "📅 Par période", "🧭 Localité × période", "🏗️ Par phase",
 ])
 
 # -----------------------------------------------------------------------
@@ -380,9 +406,103 @@ with tab_croisement:
                                 f"compteurs_localite_x_periode_{suffixe_fichier}.csv", "text/csv",
                                 key="cpt_dl_croisement")
 
+# -----------------------------------------------------------------------
+# Par phase du projet
+# -----------------------------------------------------------------------
+with tab_phase:
+    section_title("STATISTIQUES PAR PHASE DU PROJET")
+    noms_phases = [str(p).strip() for p in phases_editees["Phase"].tolist() if pd.notna(p) and str(p).strip()]
+    if not noms_phases:
+        st.info(
+            "Définis au moins une phase (nom + dates de début/fin) dans l'encadré « 🏗️ Phases du projet » "
+            "de la barre latérale pour voir les statistiques par phase."
+        )
+    else:
+        n_hors_phase = int((df["phase"] == "(hors phase)").sum())
+        if n_hors_phase:
+            st.warning(
+                f"{n_hors_phase} compteur(s) ont une période d'installation en dehors de toutes les phases "
+                "définies — ajuste les dates de début/fin dans la barre latérale si besoin."
+            )
+        st.caption(
+            "Les plages de dates de chaque phase sont définies et modifiables dans la barre latérale "
+            "(« 🏗️ Phases du projet ») — aucune colonne « phase » n'existe dans les exports Holley, ce "
+            "classement est donc entièrement basé sur la période d'installation de chaque compteur."
+        )
+
+        ordre_phases = noms_phases + (["(hors phase)"] if n_hors_phase else [])
+        par_phase = df["phase"].value_counts().reindex(ordre_phases).fillna(0).astype(int)
+        classees = par_phase.drop("(hors phase)", errors="ignore")
+        phase_top = classees.idxmax() if not classees.empty and classees.max() > 0 else "—"
+
+        kpi_row([
+            ("🏗️ Phases définies", str(len(noms_phases)), None),
+            ("🥇 Phase la plus équipée", phase_top, None),
+            ("🔌 Compteurs classés", f"{int(classees.sum()):,}".replace(",", " "), None),
+            ("❓ Compteurs hors phase", str(n_hors_phase), None),
+        ])
+
+        st.write("")
+        section_title("COMPTEURS INSTALLÉS PAR PHASE")
+        df_par_phase = par_phase.reset_index()
+        df_par_phase.columns = ["Phase", "Compteurs installés"]
+        couleurs_phase = [GREY if p == "(hors phase)" else NAVY for p in df_par_phase["Phase"]]
+        fig = px.bar(df_par_phase, x="Phase", y="Compteurs installés", text="Compteurs installés",
+                     category_orders={"Phase": ordre_phases})
+        fig.update_traces(marker_color=couleurs_phase, textposition="outside")
+        fig = plotly_base_layout(fig, height=340, legend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.write("")
+        section_title("ÉVOLUTION DES INSTALLATIONS PAR PHASE, DANS LE TEMPS")
+        granularite_phase = st.radio(
+            "Granularité", ["Mois", "Trimestre", "Année"], horizontal=True, index=0, key="cpt_gran_phase",
+        )
+        code_periode_phase = {"Mois": "M", "Trimestre": "Q", "Année": "Y"}[granularite_phase]
+        df_phase_temps = df.copy()
+        df_phase_temps["bucket"] = df_phase_temps["periode"].dt.to_period(code_periode_phase).dt.to_timestamp()
+        par_bucket_phase = df_phase_temps.groupby(["bucket", "phase"]).size().reset_index(name="Compteurs")
+        ordre_phases_presentes = [p for p in ordre_phases if p in par_bucket_phase["phase"].unique()]
+
+        fig_evol = px.bar(
+            par_bucket_phase, x="bucket", y="Compteurs", color="phase",
+            category_orders={"phase": ordre_phases_presentes}, color_discrete_sequence=CATEGORICAL,
+        )
+        fig_evol.update_layout(barmode="stack")
+        fig_evol = plotly_base_layout(fig_evol, height=380, legend=True)
+        fig_evol.update_xaxes(title=None)
+        st.plotly_chart(fig_evol, use_container_width=True)
+
+        section_title("CUMUL DES INSTALLATIONS PAR PHASE, DANS LE TEMPS")
+        par_bucket_phase_cumul = par_bucket_phase.sort_values("bucket").copy()
+        par_bucket_phase_cumul["Cumul"] = par_bucket_phase_cumul.groupby("phase")["Compteurs"].cumsum()
+        fig_cumul = px.line(
+            par_bucket_phase_cumul, x="bucket", y="Cumul", color="phase",
+            category_orders={"phase": ordre_phases_presentes}, color_discrete_sequence=CATEGORICAL, markers=True,
+        )
+        fig_cumul = plotly_base_layout(fig_cumul, height=340, legend=True)
+        fig_cumul.update_xaxes(title=None)
+        fig_cumul.update_traces(line=dict(width=2.5))
+        st.plotly_chart(fig_cumul, use_container_width=True)
+
+        st.write("")
+        section_title("TABLEAU CROISÉ PHASE × PÉRIODE")
+        pivot_phase = (df_phase_temps.groupby(["phase", "bucket"]).size().reset_index(name="Compteurs")
+                       .pivot(index="phase", columns="bucket", values="Compteurs").fillna(0))
+        pivot_phase = pivot_phase.reindex(ordre_phases_presentes)
+        format_colonne = "%Y" if granularite_phase == "Année" else "%m/%Y"
+        pivot_phase.columns = [c.strftime(format_colonne) for c in pivot_phase.columns]
+        with st.expander("📋 Voir le tableau croisé phase × période", expanded=True):
+            st.dataframe(pivot_phase.astype(int), use_container_width=True,
+                         height=min(400, 38 * (len(pivot_phase) + 1)))
+            st.download_button(
+                "⬇️ Télécharger ce tableau croisé (CSV)", pivot_phase.astype(int).to_csv().encode("utf-8"),
+                "compteurs_phase_x_periode.csv", "text/csv", key="cpt_dl_phase_periode",
+            )
+
 st.write("")
 with st.expander("📄 Export complet des compteurs (toutes colonnes nettoyées)"):
-    colonnes_export = [c for c in ["numero_compteur", "localite", "poste", "categorie", "type_compteur",
+    colonnes_export = [c for c in ["numero_compteur", "localite", "poste", "phase", "categorie", "type_compteur",
                                     "solaire", "periode", "nom_fichier"] if c in df.columns]
     st.dataframe(df[colonnes_export], use_container_width=True, hide_index=True, height=400)
     st.download_button("⬇️ Télécharger toutes les lignes (CSV)", df[colonnes_export].to_csv(index=False).encode("utf-8"),

@@ -124,12 +124,16 @@ l'application.
   similarité de texte pour les localités restantes. La colonne « Origine de la correction » indique
   laquelle des deux s'applique, et rien n'est fusionné sans validation explicite dans le tableau éditable
   de la barre latérale.
-- **Quatre angles d'analyse** : vue d'ensemble (KPI + traçabilité par lot), par localité (avec filtre par
+- **Cinq angles d'analyse** : vue d'ensemble (KPI + traçabilité par lot), par localité (avec filtre par
   poste, répartition par type de compteur réseau/solaire), par période (granularité mois/trimestre/année,
-  cumul dans le temps), et un croisement localité × période (carte de chaleur) pour repérer où et quand
-  l'effort d'installation s'est concentré.
+  cumul dans le temps), un croisement localité × période (carte de chaleur, Top 12 ou toutes les
+  localités) pour repérer où et quand l'effort d'installation s'est concentré, et un suivi par phase du
+  projet (compteurs par phase, évolution dans le temps, tableau croisé phase × période). Aucune colonne
+  « phase » n'existe dans les exports Holley : les phases sont des plages de dates **éditables dans la
+  barre latérale**, pré-remplies en 3 tiers égaux à corriger avec les vraies dates de chaque phase — un
+  compteur hors de toute plage définie est compté à part, sous « (hors phase) ».
 - **Persistance** : comme pour le Fonds revolving, rien n'est conservé entre deux sessions — tous les
-  tableaux (par localité, par période, croisement, export complet) se téléchargent en CSV.
+  tableaux (par localité, par période, croisement, par phase, export complet) se téléchargent en CSV.
 - **Découpage indépendant du reste de l'application** : les « postes » de ce suivi viennent du système
   Holley et ne sont pas automatiquement recoupés avec les antennes du réseau solaire ni les délégations
   du Fonds revolving, pour la même raison de rigueur des données que sur les autres pages. Les

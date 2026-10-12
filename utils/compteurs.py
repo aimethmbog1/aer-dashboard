@@ -47,11 +47,59 @@ from __future__ import annotations
 import difflib
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+
+# ---------------------------------------------------------------------------
+# Phases du projet (plages de dates éditables, définies par l'utilisateur —
+# aucune colonne « phase » n'existe dans les exports Holley)
+# ---------------------------------------------------------------------------
+def default_phases(df: pd.DataFrame) -> pd.DataFrame:
+    """Point de départ pour le tableau éditable des phases (barre latérale) :
+    3 phases nommées « Phase I/II/III » couvrant, à parts égales, toute la
+    période observée dans `df` — à corriger avec les vraies dates de chaque
+    phase du projet (ce module n'a aucune connaissance de ces dates)."""
+    noms = ["Phase I", "Phase II", "Phase III"]
+    if df.empty or "periode" not in df.columns or df["periode"].isna().all():
+        return pd.DataFrame({"Phase": noms, "Début": [None] * 3, "Fin": [None] * 3})
+    debut_total, fin_total = df["periode"].min().date(), df["periode"].max().date()
+    if debut_total == fin_total:
+        return pd.DataFrame({"Phase": noms, "Début": [debut_total] * 3, "Fin": [fin_total] * 3})
+    jours = (fin_total - debut_total).days
+    bornes = [debut_total,
+              debut_total + timedelta(days=jours // 3),
+              debut_total + timedelta(days=2 * jours // 3),
+              fin_total]
+    return pd.DataFrame({
+        "Phase": noms,
+        "Début": [bornes[0], bornes[1], bornes[2]],
+        "Fin": [bornes[1], bornes[2], bornes[3]],
+    })
+
+
+def assign_phases(df: pd.DataFrame, phases: pd.DataFrame) -> pd.Series:
+    """Classe chaque ligne de `df` dans une phase, à partir de son `periode`
+    et du tableau `phases` (colonnes Phase / Début / Fin — dates incluses aux
+    deux bornes, éditées par l'utilisateur dans la barre latérale). Les
+    plages sont testées dans l'ordre du tableau ; en cas de chevauchement,
+    la première phase qui correspond l'emporte. Une ligne dont la période ne
+    tombe dans aucune plage définie reçoit '(hors phase)' — jamais fusionnée
+    silencieusement dans une phase voisine."""
+    resultat = pd.Series("(hors phase)", index=df.index, dtype="object")
+    non_classees = pd.Series(True, index=df.index)
+    dates_installation = df["periode"].dt.date
+    for _, ligne in phases.iterrows():
+        nom, debut, fin = ligne.get("Phase"), ligne.get("Début"), ligne.get("Fin")
+        if pd.isna(nom) or not str(nom).strip() or pd.isna(debut) or pd.isna(fin):
+            continue
+        masque = non_classees & (dates_installation >= debut) & (dates_installation <= fin)
+        resultat[masque] = str(nom).strip()
+        non_classees &= ~masque
+    return resultat
+
 
 # ---------------------------------------------------------------------------
 # Format Holley (format réel des fichiers fournis par l'AER)
