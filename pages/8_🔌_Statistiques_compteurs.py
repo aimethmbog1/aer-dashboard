@@ -343,29 +343,42 @@ with tab_periode:
 # -----------------------------------------------------------------------
 with tab_croisement:
     section_title("INSTALLATIONS PAR LOCALITÉ ET PAR PÉRIODE")
-    st.caption("Les 12 localités les plus équipées, mois par mois — pour repérer d'un coup d'œil où et quand "
-               "l'effort d'installation s'est concentré.")
-    NB_LOC_CROISEMENT = 12
-    top_localites = df["localite"].value_counts().head(NB_LOC_CROISEMENT).index.tolist()
-    df_crois = df[df["localite"].isin(top_localites)]
+    toutes_localites_crois = df["localite"].value_counts().index.tolist()
+    vue_croisement = st.radio(
+        "Localités affichées",
+        [f"Top 12 des localités les plus équipées", f"Toutes les localités ({len(toutes_localites_crois)})"],
+        horizontal=True, key="cpt_vue_croisement",
+    )
+    if vue_croisement.startswith("Top 12"):
+        st.caption("Les 12 localités les plus équipées, mois par mois — pour repérer d'un coup d'œil où et quand "
+                   "l'effort d'installation s'est concentré.")
+        localites_crois = toutes_localites_crois[:12]
+    else:
+        st.caption(f"Les {len(toutes_localites_crois)} localités, mois par mois — tableau et graphe complets, "
+                   "sans limite de nombre de localités.")
+        localites_crois = toutes_localites_crois
+
+    df_crois = df[df["localite"].isin(localites_crois)]
     if df_crois.empty:
         st.info("Pas assez de données pour un croisement.")
     else:
         pivot = (df_crois.groupby(["localite", "periode"]).size().reset_index(name="Compteurs")
                  .pivot(index="localite", columns="periode", values="Compteurs").fillna(0))
-        pivot = pivot.reindex(top_localites)
+        pivot = pivot.reindex(localites_crois)
         pivot.columns = [c.strftime("%m/%Y") for c in pivot.columns]
         fig = go.Figure(data=go.Heatmap(
             z=pivot.values, x=pivot.columns, y=pivot.index,
             colorscale=[[0, "#F2F2F2"], [1, NAVY]], hoverongaps=False,
             colorbar=dict(title="Compteurs"),
         ))
-        fig = plotly_base_layout(fig, height=max(360, 34 * len(pivot)), legend=False)
+        fig = plotly_base_layout(fig, height=max(360, 28 * len(pivot)), legend=False)
         st.plotly_chart(fig, use_container_width=True)
-        with st.expander("📋 Voir le tableau croisé"):
-            st.dataframe(pivot.astype(int), use_container_width=True)
+        with st.expander("📋 Voir le tableau croisé", expanded=(len(localites_crois) > 12)):
+            st.dataframe(pivot.astype(int), use_container_width=True, height=min(600, 38 * (len(pivot) + 1)))
+            suffixe_fichier = "toutes_localites" if len(localites_crois) > 12 else "top12"
             st.download_button("⬇️ Télécharger ce tableau croisé (CSV)", pivot.astype(int).to_csv().encode("utf-8"),
-                                "compteurs_localite_x_periode.csv", "text/csv", key="cpt_dl_croisement")
+                                f"compteurs_localite_x_periode_{suffixe_fichier}.csv", "text/csv",
+                                key="cpt_dl_croisement")
 
 st.write("")
 with st.expander("📄 Export complet des compteurs (toutes colonnes nettoyées)"):
