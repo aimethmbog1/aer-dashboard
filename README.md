@@ -38,11 +38,17 @@ pages/
   6_📝_Notes.py                     Notes & méthodologie (recherche plein texte)
   7_💰_Fonds_revolving.py           Suivi du fonds revolving (Composante 3 du PERACE)
   8_🔌_Statistiques_compteurs.py    Statistiques des compteurs installés, par localité et par période
+  9_📌_Suivi_de_projets.py          Suivi d'avancement des projets d'électrification (registre à alimenter)
+  10_📄_Rapports.py                  Génération automatique du rapport de synthèse (PDF)
+  11_🤖_Agent_conseil.py             Recommandations priorisées (moteur de règles déterministe)
 utils/
   data.py                            Lecture et parsing du classeur (mise en cache)
   geo.py                             Distances (Haversine) et centroïdes d'antenne
   revolving.py                       Personnel de suivi & registre du fonds revolving
   compteurs.py                       Import des exports Holley & statistiques de compteurs
+  projets.py                         Registre de suivi de projets (statut, blocage, région prioritaire)
+  conseiller.py                      Moteur de règles de l'agent conseil
+  rapports.py                        Génération du PDF de synthèse (fpdf2 + kaleido)
   ui.py                              Composants d'interface & thème partagés
   loader.py                          Chargement du fichier, partagé entre les pages
 data.xlsx                            Classeur AER fourni par défaut
@@ -139,6 +145,33 @@ l'application.
   du Fonds revolving, pour la même raison de rigueur des données que sur les autres pages. Les
   « localités », elles, sont bien rapprochées des 499 sites officiels du parc solaire quand la
   ressemblance est forte (voir ci-dessus).
+
+## Suivi de projets, rapports automatiques et agent conseil — ce qu'ils font et ce qu'ils ne font pas
+
+Ces trois pages répondent à une demande de stratégie RH/matériel : accélérer la réactivité des agents,
+assurer le suivi des projets en cours, reprendre les projets à l'arrêt, relancer l'électrification dans les
+régions en crise (NOSO = Nord-Ouest + Sud-Ouest, et Extrême-Nord). L'analyse complète qui a précédé leur
+conception est dans `ANALYSE_STRATEGIQUE_AER.md`, à la racine du projet.
+
+- **Suivi de projets** : comme pour le Fonds revolving, le classeur Excel ne contient **aucune donnée
+  d'avancement de projet** (seulement une photo de capacité). Cette page ajoute un **registre à alimenter**,
+  rattaché aux 499 sites réels (Région / Antenne / Phase recopiées automatiquement, jamais ressaisies), avec
+  un statut (Planifié / En cours / Suspendu / Repris / Terminé), une date de dernier mouvement et un motif de
+  blocage. Un marqueur « région prioritaire » (NOSO / Extrême-Nord) et un plan de reprise priorisé par
+  ancienneté sont calculés automatiquement. Comme pour le Fonds revolving, **le registre démarre vide** et
+  rien n'est conservé entre deux sessions — à exporter/recharger en CSV.
+- **Génération automatique de rapports** : assemble en PDF les KPI déjà calculés ailleurs dans l'application
+  (statut des équipes, plan d'action RH du classeur, répartition régionale, suivi de projets, Fonds
+  revolving, recommandations de l'agent conseil) — réutilise le générateur déjà validé sur l'application
+  AER_METERDASHBOARD (`fpdf2` + `kaleido`). Aucune section n'invente de donnée : une source vide (registre
+  non alimenté) l'indique explicitement plutôt que d'être simplement absente.
+- **Agent conseil** : **pas un agent conversationnel ni un appel à une API LLM** — un moteur de règles
+  déterministe, choisi explicitement pour un déploiement public (gratuit, instantané, aucune clé API/secret
+  à gérer, aucun risque d'hallucination). Chaque recommandation est reliée à un chiffre réel (plan d'action
+  RH du classeur, manques RH par région, charge sites/agent par antenne, projets à relancer, Fonds
+  revolving) et les règles elles-mêmes sont documentées dans un encadré de transparence sur la page. Une
+  évolution vers un habillage conversationnel (LLM) reste possible sans changer cette logique si une clé API
+  est fournie plus tard — voir l'analyse stratégique pour le détail des options considérées.
 
 ## Points de conception
 
