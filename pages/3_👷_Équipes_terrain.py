@@ -43,19 +43,29 @@ section_title("ÉQUIPES PAR ZONE — FILTRES")
 
 c1, c2, c3, c4 = st.columns(4)
 antennes = sorted(eq["Antenne"].dropna().unique())
+zones = sorted(eq["Zone"].dropna().unique()) if "Zone" in eq.columns else []
 roles = sorted(eq["Rôle"].dropna().unique())
 f_antenne = c1.multiselect("Antenne", antennes, default=[])
-f_role = c2.multiselect("Rôle", roles, default=[])
-f_statut = c3.multiselect("Statut", ["OK", "MANQUE"], default=[])
-f_search = c4.text_input("Rechercher un nom")
+f_zone = c2.multiselect("Zone", zones, default=[], disabled=not zones)
+f_role = c3.multiselect("Rôle", roles, default=[])
+f_statut = c4.multiselect("Statut", ["OK", "MANQUE"], default=[])
+
+c5, c6 = st.columns(2)
+postes = sorted(eq["Poste (fichier RH)"].dropna().unique()) if "Poste (fichier RH)" in eq.columns else []
+f_poste = c5.multiselect("Poste (fichier RH)", postes, default=[], disabled=not postes)
+f_search = c6.text_input("Rechercher un nom")
 
 view = eq.copy()
 if f_antenne:
     view = view[view["Antenne"].isin(f_antenne)]
+if f_zone:
+    view = view[view["Zone"].isin(f_zone)]
 if f_role:
     view = view[view["Rôle"].isin(f_role)]
 if f_statut:
     view = view[view["Statut"].isin(f_statut)]
+if f_poste:
+    view = view[view["Poste (fichier RH)"].isin(f_poste)]
 if f_search:
     view = view[view["Nom"].astype(str).str.contains(f_search, case=False, na=False)]
 
