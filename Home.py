@@ -17,6 +17,7 @@ from utils.revolving import get_register as get_revolving_register, with_derived
 from utils.projets import get_register as get_projets_register, with_derived_columns as projets_derived
 from utils.compteurs import get_cached_dataframe as get_compteurs_cache
 from utils.conseiller import generate_recommendations
+from utils.personnel import get_effective_roster
 
 st.set_page_config(page_title="Vue d'ensemble — AER", page_icon=PAGE_ICON, layout="wide")
 inject_base_style()
@@ -24,6 +25,11 @@ inject_base_style()
 data = get_data()
 if data is None:
     st.stop()
+
+# Registre RH effectif (classeur + mouvements de personnel appliqués cette
+# session depuis la page Organigramme) — toujours utilisé à la place de
+# data.equipes_rows / data.unassigned pour que l'app reste à jour partout.
+eq_effectif, unassigned_effectif = get_effective_roster(data.equipes_rows, data.unassigned)
 
 st.title(APP_TITLE)
 st.caption(data.generated_on or "")
@@ -259,9 +265,10 @@ with tab_rh:
     st.caption(
         "Reprend exactement le calcul de la page « Équipes terrain » (16 équipes × 4 postes-types : "
         "Ingénieur, Technicien 1, Technicien 2, Chauffeur) — un angle plus fin, mais jamais contradictoire "
-        "avec les KPI globaux du classeur affichés dans l'onglet « Vue d'ensemble »."
+        "avec les KPI globaux du classeur affichés dans l'onglet « Vue d'ensemble ». Reflète les mouvements "
+        "de personnel appliqués cette session depuis la page « Organigramme »."
     )
-    eq = data.equipes_rows
+    eq = eq_effectif
     if eq is None or eq.empty:
         st.warning("Feuille « Données - Équipes » introuvable ou vide.")
     else:
@@ -288,7 +295,7 @@ with tab_rh:
             fig = plotly_base_layout(fig, height=320, legend=False)
             st.plotly_chart(fig, use_container_width=True)
 
-        unassigned = data.unassigned
+        unassigned = unassigned_effectif
         n_unassigned = 0 if unassigned is None else len(unassigned)
         kpi_row([
             ("Postes-types suivis (16 équipes × 4)", str(total), None),
@@ -315,7 +322,7 @@ with tab_auto:
         n_total = len(veh_register)
         n_affectes = int((veh_register["Équipe affectée"] != VEH_EQUIPE_NON_AFFECTEE).sum())
         view_age = with_age_and_reforme(veh_register, SEUIL_AGE_REFORME_DEFAUT_ANS)
-        glob = besoin_acquisition_global(veh_register, data.equipes_rows)
+        glob = besoin_acquisition_global(veh_register, eq_effectif)
 
         ac1, ac2 = st.columns([1, 1.4])
         with ac1:

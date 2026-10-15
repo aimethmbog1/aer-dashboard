@@ -32,11 +32,12 @@ Home.py                              Page d'accueil : tableau de bord à onglets
                                       simples nombres), onglet « Vue d'ensemble » (KPI, grille des 16
                                       équipes, plan d'action prioritaire) inchangé
 pages/
-  1_🗺️_Carte_électrification.py     Carte unique : sites, antennes, distances, charge de personnel
+  1_🗺️_Carte_électrification.py     Carte unique : sites, antennes, distances, charge de personnel,
+                                      statistiques par phase
   2_🛰️_Parc_solaire.py              Dimensionnement par antenne + tableau des 499 sites
   3_👷_Équipes_terrain.py           Détail des équipes + personnel non affecté
   4_🌍_Répartition_régionale.py     Répartition par antenne / région / département
-  5_🏢_Organigramme.py              Hiérarchie du réseau d'antennes (icicle chart)
+  5_🏢_Organigramme.py              Hiérarchie du réseau d'antennes (sunburst) + mouvement de personnel
   6_📝_Notes.py                     Notes & méthodologie (recherche plein texte)
   7_💰_Fonds_revolving.py           Suivi du fonds revolving (Composante 3 du PERACE)
   8_🔌_Statistiques_compteurs.py    Statistiques des compteurs installés, par localité et par période
@@ -53,6 +54,7 @@ utils/
   conseiller.py                      Moteur de règles de l'agent conseil
   rapports.py                        Génération du PDF de synthèse (fpdf2 + kaleido)
   vehicules.py                       Registre du parc automobile, journal d'utilisation, réforme
+  personnel.py                       Mouvements de personnel (session) par-dessus le registre RH figé
   ui.py                              Composants d'interface & thème partagés
   loader.py                          Chargement du fichier, partagé entre les pages
 data.xlsx                            Classeur AER fourni par défaut
@@ -102,6 +104,40 @@ les données permettent réellement :
   sur la page « Équipes terrain », et la table de fréquence de visite du
   référentiel RH est quand même montrée en clair (non géolocalisée) sur la page
   carte, avec le même avertissement.
+- **Statistiques par phase** : nombre de sites et puissance (kWc) par phase
+  (1/2/3), recalculées en direct sur la sélection filtrée (pas seulement sur les
+  499 sites totaux) — donut + barre + tableau, juste sous les KPI de la carte.
+
+## L'organigramme du réseau d'antennes — ce qu'il fait et ce qu'il ne fait pas
+
+Deux schémas hiérarchiques distincts, volontairement **jamais fusionnés** (même
+raison que sur la carte d'électrification : les deux feuilles source découpent
+les antennes différemment) :
+
+- **« Siège & antennes » (parc solaire)** : antennes du parc solaire (nommées
+  par ville), taille = **effectif recommandé** de la feuille Antennes — Détail
+  solaire (une cible, pas l'effectif réel). Rendu en *sunburst* Plotly (police
+  Outfit, teintes de marque) — forme et typographie retravaillées sur demande
+  explicite pour ce schéma précis, contrairement au reste des graphiques de
+  l'application dont la palette reste celle de `utils/data.py`.
+- **« Répartition actuelle du personnel » (référentiel RH)** : antennes de la
+  feuille Données - Équipes (nommées par région — Nord, Adamaoua, Est…, un
+  découpage différent des antennes solaires ci-dessus), affichées **à plat**
+  (le classeur ne fournit aucune colonne de rattachement hiérarchique entre
+  elles, contrairement à la feuille solaire qui a « Rattachée à »). Taille =
+  **effectif réellement en poste maintenant** ; couleur = taux de couverture
+  des 4 postes-types de l'antenne (vert ≥ 90 %, orange 50-90 %, rouge < 50 %).
+- **Mouvement de personnel** : déplace un agent — y compris depuis le pool
+  « personnel non affecté à une équipe » — vers un autre poste (une équipe
+  précise, vacante ou déjà occupée — auquel cas un échange a lieu — ou vers le
+  pool). Gérée par `utils/personnel.py`, en session uniquement, sur le même
+  principe que les autres registres éditables (parc auto, fonds revolving,
+  suivi de projets) : le classeur source n'est **jamais** modifié, un journal
+  horodaté des mouvements est tenu, et tout est réinitialisable en un clic.
+  Toutes les pages qui dépendent du personnel lisent ce registre **effectif**
+  (classeur + mouvements) plutôt que les données brutes du classeur, pour que
+  Home, Équipes terrain, Organigramme et le besoin d'acquisition de véhicules
+  (côté chauffeurs) se mettent à jour automatiquement après chaque mouvement.
 
 ## Le fonds revolving (Composante 3 du PERACE) — ce qu'il fait et ce qu'il ne fait pas
 

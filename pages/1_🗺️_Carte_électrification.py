@@ -1,11 +1,12 @@
 import numpy as np
+import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
 from utils.data import NAVY, BLUE, GOLD, RED, GREEN, AMBER, CATEGORICAL
 from utils.geo import haversine_km, hierarchy_edges
 from utils.loader import get_data
-from utils.ui import PAGE_ICON, inject_base_style, section_title, kpi_row, render_sidebar_footer
+from utils.ui import PAGE_ICON, inject_base_style, section_title, kpi_row, plotly_base_layout, render_sidebar_footer
 
 st.set_page_config(page_title="Carte d'électrification — AER", page_icon=PAGE_ICON, layout="wide")
 inject_base_style()
@@ -90,8 +91,6 @@ with c4:
 # =========================================================================
 # KPI contextuels — recalculés en direct selon la sélection
 # =========================================================================
-phase_counts = view["Phase"].value_counts().to_dict()
-phase_txt = " · ".join(f"{k} : {v}" for k, v in sorted(phase_counts.items()))
 kpi_row([
     ("Sites (sélection)", f"{len(view):,}".replace(",", " "), None),
     ("Puissance (kWc)", f"{view['Puissance (kWc)'].sum():,.0f}".replace(",", " "), None),
@@ -99,8 +98,49 @@ kpi_row([
     ("Distance moy. au centre antenne (km)", f"{view['Distance au centre antenne (km)'].mean():.1f}"
      if len(view) else "—", None),
 ])
-if phase_txt:
-    st.caption(f"Répartition par phase (sélection) : {phase_txt}")
+
+st.write("")
+
+# =========================================================================
+# Statistiques par phase — recalculées en direct selon la sélection/filtres
+# ci-dessus, jamais sur l'ensemble des 499 sites si des filtres sont actifs.
+# =========================================================================
+if not view.empty:
+    section_title("STATISTIQUES PAR PHASE (sélection)")
+    phase_stats = (
+        view.groupby("Phase", as_index=False)
+        .agg(**{"Sites": ("Nom du site", "count"), "Puissance (kWc)": ("Puissance (kWc)", "sum")})
+        .sort_values("Phase")
+    )
+    total_sites = phase_stats["Sites"].sum()
+    total_kwc = phase_stats["Puissance (kWc)"].sum()
+    phase_stats["% des sites"] = (phase_stats["Sites"] / total_sites * 100).round(1) if total_sites else 0.0
+    phase_stats["% de la puissance"] = (
+        (phase_stats["Puissance (kWc)"] / total_kwc * 100).round(1) if total_kwc else 0.0
+    )
+
+    pc1, pc2, pc3 = st.columns([1, 1, 1.3])
+    with pc1:
+        fig = go.Figure(data=[go.Pie(
+            labels=phase_stats["Phase"], values=phase_stats["Sites"], hole=0.5,
+            marker=dict(colors=CATEGORICAL[: len(phase_stats)]), textinfo="label+percent", sort=False,
+        )])
+        fig.update_layout(title="Sites par phase")
+        fig = plotly_base_layout(fig, height=320, legend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    with pc2:
+        fig = px.bar(phase_stats, x="Phase", y="Puissance (kWc)",
+                      color_discrete_sequence=[BLUE], title="Puissance par phase (kWc)")
+        fig = plotly_base_layout(fig, height=320, legend=False)
+        fig.update_layout(yaxis_title="kWc")
+        st.plotly_chart(fig, use_container_width=True)
+    with pc3:
+        st.write("")
+        st.write("")
+        st.dataframe(
+            phase_stats[["Phase", "Sites", "% des sites", "Puissance (kWc)", "% de la puissance"]],
+            use_container_width=True, hide_index=True, height=int(38 + 35 * len(phase_stats)),
+        )
 
 st.write("")
 

@@ -11,6 +11,7 @@ from utils.ui import (
     render_sidebar_footer,
 )
 from utils.loader import get_data
+from utils.personnel import get_effective_roster
 from utils.vehicules import (
     ENTITES_PARC, EQUIPE_NON_AFFECTEE, CHAUFFEUR_NON_DEFINI, TYPES_VEHICULE_OPTIONS, TYPE_NON_RENSEIGNE,
     STATUTS_OPERATIONNELS, TYPES_EVENEMENT, REGISTER_COLUMNS, JOURNAL_COLUMNS,
@@ -92,7 +93,7 @@ partagé, budget) n'entre dans ce calcul, faute de règle officielle communiqué
         """
     )
 
-equipes = data.equipes_rows
+equipes, _unassigned_effectif = get_effective_roster(data.equipes_rows, data.unassigned)
 opts_equipes = equipe_options(equipes)
 
 tab_registre, tab_affectation, tab_usage, tab_stats = st.tabs(

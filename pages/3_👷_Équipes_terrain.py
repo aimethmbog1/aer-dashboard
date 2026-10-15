@@ -3,6 +3,7 @@ import streamlit as st
 
 from utils.data import NAVY, BLUE, GREEN, RED, CATEGORICAL
 from utils.loader import get_data
+from utils.personnel import get_effective_roster
 from utils.ui import (
     PAGE_ICON, inject_base_style, section_title, plotly_base_layout, kpi_row,
     render_sidebar_footer, style_map,
@@ -17,10 +18,12 @@ if data is None:
 
 st.title("👷 Ressources humaines terrain — Équipes")
 
-eq = data.equipes_rows
+eq, unassigned_effectif = get_effective_roster(data.equipes_rows, data.unassigned)
 if eq is None or eq.empty:
     st.warning("Feuille « Données - Équipes » introuvable ou vide.")
     st.stop()
+st.caption("↔️ Les mouvements de personnel appliqués cette session (page « Organigramme ») sont déjà reflétés "
+           "ci-dessous.")
 
 STANDARD_ROLES = ["Ingénieur", "Technicien 1", "Technicien 2", "Chauffeur"]
 standard = eq[eq["Rôle"].isin(STANDARD_ROLES)]
@@ -106,7 +109,7 @@ with c2:
 
 st.write("")
 section_title("PERSONNEL NON AFFECTÉ À UNE ÉQUIPE")
-unassigned = data.unassigned
+unassigned = unassigned_effectif
 if unassigned is not None and not unassigned.empty:
     c1, c2 = st.columns([2, 1])
     with c1:
