@@ -58,6 +58,24 @@ utils/
 data.xlsx                            Classeur AER fourni par défaut
 ```
 
+## Habillage visuel — inspiré de tertullien.com
+
+L'application reprend le système visuel du site **tertullien.com** (plateforme d'identité médicale
+d'urgence) : fond neutre, vert forêt profond comme couleur de marque, cartes blanches à coins
+arrondis et ombre légère teintée de vert, titres en **Outfit** (gras, géométrique) et texte/contrôles
+en **Plus Jakarta Sans**. Concrètement :
+
+- **`.streamlit/config.toml`** porte l'essentiel du thème (couleurs natives, polices via Google
+  Fonts, rayons de bordure, en-têtes de `st.dataframe`) — c'est la méthode native recommandée par
+  Streamlit, plus robuste qu'une CSS injectée face aux mises à jour de version.
+- **`utils/ui.py` (`inject_base_style`)** complète uniquement ce que `config.toml` ne couvre pas :
+  la carte des KPI (`st.metric` habillé en « feature card » blanche avec ombre), le bandeau de
+  titre de section (`section_title`, teinte menthe + texte vert foncé) et les badges de statut.
+- **Les couleurs des graphiques Plotly restent inchangées** (`NAVY`/`BLUE`/`GOLD`/`STATUS_COLORS`
+  dans `utils/data.py`) : c'est un choix délibéré, pas un oubli — ce système de couleurs a été
+  validé (lisibilité, daltonisme) et reste cohérent sur les 13 pages ; seul l'« habillage » de
+  l'application (fond, typographie, cartes, boutons, barre latérale) a été retravaillé.
+
 ## La carte d'électrification — ce qu'elle fait et ce qu'elle ne fait pas
 
 C'est la page la plus riche de l'application, pensée pour rester honnête sur ce que

@@ -11,28 +11,59 @@ PAGE_ICON = "☀️"
 APP_TITLE = "Tableau de bord AER — Parc solaire & Ressources humaines"
 
 
+# Jetons d'habillage repris du design de tertullien.com (voir commentaire dans
+# .streamlit/config.toml) — uniquement pour le « chrome » de l'app (cartes KPI,
+# bandeaux de section, badges). Les couleurs des graphiques Plotly restent
+# celles de utils/data.py (NAVY/BLUE/GOLD/STATUS_COLORS), volontairement non
+# modifiées ici.
+BRAND = "#14532D"          # vert Tertullien — titres de section, accents
+BRAND_DARK = "#052E16"
+SURFACE_ALT = "#F0FDF4"     # teinte menthe claire (sections alternées du site)
+CARD_SHADOW = "0 1px 4px rgba(5,46,22,0.06)"
+CARD_SHADOW_MD = "0 4px 16px rgba(5,46,22,0.10)"
+HEADING_FONT = "'Outfit', 'Plus Jakarta Sans', sans-serif"
+
+
 def inject_base_style():
     st.markdown(
         f"""
         <style>
         .block-container {{ padding-top: 1.6rem; padding-bottom: 3rem; }}
-        [data-testid="stMetricValue"] {{ font-size: 1.6rem; color: {NAVY}; }}
+
+        /* Cartes KPI (st.metric) — style « feature card » du site de référence :
+           fond blanc, coins arrondis, ombre légère teintée de vert plutôt que
+           grise. S'applique automatiquement à tous les st.metric existants,
+           sans changer leur code d'appel. */
+        [data-testid="stMetric"] {{
+            background: #FFFFFF;
+            border: 1px solid {GREY}26;
+            border-radius: 14px;
+            padding: 1rem 1.1rem 0.9rem 1.1rem;
+            box-shadow: {CARD_SHADOW};
+        }}
+        [data-testid="stMetricValue"] {{ font-size: 1.6rem; color: {BRAND_DARK}; font-family: {HEADING_FONT}; font-weight: 700; }}
         [data-testid="stMetricLabel"] {{ font-weight: 600; letter-spacing: .02em; }}
+
         .aer-kpi {{
-            background: var(--background-color, #fff);
-            border: 1px solid rgba(31,56,100,0.12);
-            border-radius: 10px;
+            background: #FFFFFF;
+            border: 1px solid {GREY}26;
+            border-radius: 14px;
             padding: 0.9rem 1rem 0.7rem 1rem;
+            box-shadow: {CARD_SHADOW};
         }}
         .aer-badge {{
-            display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px;
-            font-size: 0.78rem; font-weight: 700; color: white;
+            display: inline-block; padding: 0.2rem 0.7rem; border-radius: 999px;
+            font-size: 0.78rem; font-weight: 700; color: white; letter-spacing: .01em;
         }}
         .aer-section-title {{
-            background: #DCE6F1; color: {NAVY}; font-weight: 700; font-size: 1.02rem;
-            padding: 0.5rem 0.8rem; border-radius: 6px; margin: 0.6rem 0 0.8rem 0;
+            background: {SURFACE_ALT}; color: {BRAND_DARK}; font-family: {HEADING_FONT};
+            font-weight: 700; font-size: 1.05rem;
+            padding: 0.55rem 0.9rem; border-radius: 12px; margin: 0.6rem 0 0.8rem 0;
         }}
+        h1, h2, h3, h4 {{ font-family: {HEADING_FONT}; }}
         div[data-baseweb="tab-list"] {{ gap: 4px; }}
+        [data-testid="stTab"] p {{ font-family: {HEADING_FONT}; font-weight: 600; }}
+        [data-testid="stSidebarNavLink"] {{ border-radius: 10px; }}
         </style>
         """,
         unsafe_allow_html=True,
