@@ -266,6 +266,64 @@ def doublons_chauffeurs(register: pd.DataFrame) -> dict:
     return {nom: vids for nom, vids in par_chauffeur.items() if len(vids) > 1}
 
 
+STATUT_HORS_PARC = "Réformé / sorti du parc"
+
+
+def vehicules_disponibles_antenne(register: pd.DataFrame, antenne: str) -> pd.DataFrame:
+    """Véhicules actuellement affectés à cette antenne et toujours
+    physiquement dans le parc (tout statut sauf « Réformé / sorti du parc »,
+    y compris « En panne » et « En réforme » puisqu'ils restent, pour
+    l'instant, un véhicule réel du parc)."""
+    if register is None or register.empty:
+        return register
+    return register[(register["Équipe affectée"] == antenne)
+                     & (register["Statut opérationnel"] != STATUT_HORS_PARC)]
+
+
+def vehicules_non_affectes_disponibles(register: pd.DataFrame) -> pd.DataFrame:
+    """Véhicules encore dans le parc (hors « Réformé / sorti du parc ») mais
+    pas affectés à une antenne précise — un vivier qui peut, avant tout
+    achat, couvrir une partie d'un besoin par redéploiement plutôt que par
+    acquisition."""
+    if register is None or register.empty:
+        return register
+    return register[(register["Équipe affectée"] == EQUIPE_NON_AFFECTEE)
+                     & (register["Statut opérationnel"] != STATUT_HORS_PARC)]
+
+
+def besoins_acquisition_par_equipe(register: pd.DataFrame, equipes_rows: pd.DataFrame | None) -> pd.DataFrame:
+    """Besoin d'acquisition de véhicules par antenne RH, selon la règle fixée
+    par l'utilisateur : UN CHAUFFEUR RÉEL (agent RH, rôle « Chauffeur »,
+    statut OK) DOIT DISPOSER D'UN VÉHICULE DÉDIÉ. Pour chaque antenne :
+
+        besoin = max(0, nb chauffeurs réels − nb véhicules qui lui sont
+                         affectés et encore physiquement dans le parc)
+
+    Ceci n'est PAS une dotation officielle : c'est l'application mécanique de
+    la règle « un chauffeur, une voiture » que l'utilisateur a lui-même fixée,
+    sans autre critère (kilométrage, usage partagé, pool de réserve...) faute
+    de règle officielle communiquée par ailleurs."""
+    cols = ["Antenne (RH)", "Chauffeurs réels (rôle Chauffeur, statut OK)",
+            "Véhicules disponibles (affectés, hors réforme sortie)",
+            "Besoin d'acquisition (1 chauffeur = 1 véhicule)"]
+    if equipes_rows is None or equipes_rows.empty or "Antenne" not in equipes_rows.columns:
+        return pd.DataFrame(columns=cols)
+
+    antennes = sorted(equipes_rows["Antenne"].dropna().unique())
+    rows = []
+    for a in antennes:
+        n_chauffeurs = len(chauffeurs_reels_antenne(a, equipes_rows))
+        n_vehicules = 0 if register is None or register.empty else len(vehicules_disponibles_antenne(register, a))
+        besoin = max(0, n_chauffeurs - n_vehicules)
+        rows.append({
+            "Antenne (RH)": a,
+            "Chauffeurs réels (rôle Chauffeur, statut OK)": n_chauffeurs,
+            "Véhicules disponibles (affectés, hors réforme sortie)": n_vehicules,
+            "Besoin d'acquisition (1 chauffeur = 1 véhicule)": besoin,
+        })
+    return pd.DataFrame(rows, columns=cols)
+
+
 def with_age_and_reforme(df: pd.DataFrame, seuil_age_ans: int) -> pd.DataFrame:
     """Ajoute les colonnes calculées : âge, date de réforme suggérée (à partir
     du seuil d'âge choisi dans l'appli) et statut de réforme. La date retenue

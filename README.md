@@ -209,6 +209,13 @@ carburant, vidanges, chauffeur, réforme), à partir du fichier `gestionnaire_du
 - **Couverture par antenne = un repère, pas une dotation officielle** : la page signale les antennes RH sans
   aucun véhicule affecté, mais aucun ratio véhicules/agents officiel n'existe dans les classeurs disponibles
   — ce n'est donc pas un calcul de besoin validé.
+- **Besoin d'acquisition (onglet « Statistiques & réforme ») = application mécanique de la règle « 1
+  chauffeur = 1 véhicule » fixée par l'utilisateur**, pas une dotation officielle : pour chaque antenne,
+  besoin = max(0, nombre de chauffeurs réels — rôle Chauffeur, statut OK dans la feuille RH — moins nombre de
+  véhicules qui lui sont affectés et encore physiquement dans le parc, hors « Réformé / sorti du parc »). Les
+  véhicules « non affectés » mais toujours dans le parc sont comptés à part comme un vivier mobilisable par
+  redéploiement avant tout achat (« besoin net » ≤ « besoin brut »). Aucun autre critère (kilométrage, usage
+  partagé entre chauffeurs, pool de réserve, budget) n'entre dans ce calcul, faute de règle communiquée.
 - **Limite cosmétique connue** : cette version de Streamlit (1.65) affiche le texte littéral « None » au lieu
   d'une cellule vide pour une date ou un nombre non renseigné dans un tableau modifiable (`st.data_editor`) —
   un comportement de la bibliothèque, pas une donnée manquante à corriger. Les tableaux en lecture seule

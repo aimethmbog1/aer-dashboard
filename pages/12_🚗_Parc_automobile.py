@@ -15,6 +15,7 @@ from utils.vehicules import (
     get_register, set_register, next_vehicule_id, equipe_options,
     get_journal, set_journal, with_age_and_reforme, journal_summary, besoins_par_equipe,
     chauffeurs_disponibles, doublons_chauffeurs, chauffeurs_hors_antenne,
+    besoins_acquisition_par_equipe, vehicules_non_affectes_disponibles,
 )
 
 st.set_page_config(page_title="Parc automobile — AER", page_icon=PAGE_ICON, layout="wide")
@@ -65,6 +66,14 @@ feuille RH) qui ne conduisent pas déjà un autre véhicule. Trois règles sont 
 qu'une seule équipe affectée à la fois, qu'un seul chauffeur à la fois, et un même chauffeur ne peut être
 responsable que d'un seul véhicule à la fois. Une édition directe du tableau du registre reste possible mais
 n'est pas bloquée par ces règles — la page le signale alors explicitement plutôt que de corriger en silence.
+
+**Besoin d'acquisition (onglet « Statistiques & réforme »)** : la règle appliquée est celle fixée par
+l'utilisateur — **un chauffeur réel = un véhicule dédié**. Par antenne : besoin = max(0, nombre de chauffeurs
+réels de la feuille RH (rôle Chauffeur, statut OK) − nombre de véhicules qui lui sont affectés et encore
+physiquement dans le parc). Les véhicules « non affectés » mais toujours dans le parc sont comptés à part
+comme un vivier mobilisable par redéploiement, avant tout achat (« besoin net » ≤ « besoin brut »). Aucun
+autre critère (kilométrage, usage partagé, pool de réserve, budget) n'entre dans ce calcul, faute de règle
+officielle communiquée.
 
 **Ce que cette page n'est PAS :**
 - Le type de véhicule, la date d'acquisition précise, le chauffeur attitré, le statut opérationnel et le
@@ -499,6 +508,63 @@ with tab_stats:
             ("À surveiller (≤ 12 mois)", str(n_alerte), None),
             ("Année inconnue (non calculable)", str(n_inconnu), None),
         ])
+
+        st.write("")
+        section_title("🛒 BESOIN D'ACQUISITION DE VÉHICULES — RÈGLE : 1 CHAUFFEUR = 1 VÉHICULE")
+        st.caption(
+            "Application mécanique de la règle fixée par l'utilisateur : chaque chauffeur **réel** (agent RH, "
+            "rôle « Chauffeur », statut OK) doit disposer d'un véhicule dédié. Pour chaque antenne : "
+            "**besoin = max(0, nombre de chauffeurs réels − nombre de véhicules qui lui sont affectés et "
+            "encore physiquement dans le parc)**. Ce n'est pas une dotation officielle — aucun autre critère "
+            "(kilométrage, usage partagé entre chauffeurs, pool de réserve, budget disponible...) n'est pris "
+            "en compte, faute de règle officielle communiquée par ailleurs. Les échéances de réforme "
+            "ci-dessous viendront s'ajouter à ce besoin à mesure que des véhicules sortiront du parc."
+        )
+        besoins_acq = besoins_acquisition_par_equipe(register, equipes)
+        if besoins_acq.empty:
+            st.info("Feuille « Données - Équipes » indisponible : impossible de calculer le besoin d'acquisition.")
+        else:
+            pool_non_affecte = vehicules_non_affectes_disponibles(register)
+            total_chauffeurs = int(besoins_acq["Chauffeurs réels (rôle Chauffeur, statut OK)"].sum())
+            total_vehicules_dispo = int(besoins_acq["Véhicules disponibles (affectés, hors réforme sortie)"].sum())
+            total_besoin_brut = int(besoins_acq["Besoin d'acquisition (1 chauffeur = 1 véhicule)"].sum())
+            n_pool = 0 if pool_non_affecte is None else len(pool_non_affecte)
+            besoin_net = max(0, total_besoin_brut - n_pool)
+
+            kpi_row([
+                ("Chauffeurs réels (toutes antennes)", str(total_chauffeurs), None),
+                ("Véhicules affectés disponibles", str(total_vehicules_dispo), None),
+                ("Besoin brut (avant redéploiement)", str(total_besoin_brut), None),
+                ("Véhicules non affectés mobilisables", str(n_pool), None),
+                ("Besoin net d'acquisition (estimation)", str(besoin_net), None),
+            ])
+            if n_pool > 0 and total_besoin_brut > 0:
+                st.caption(
+                    f"ℹ️ {n_pool} véhicule(s) actuellement « non affecté(s) » (et toujours dans le parc) "
+                    f"pourrai(en)t couvrir une partie du besoin par simple redéploiement entre antennes, avant "
+                    f"tout achat — d'où le besoin net ci-dessus, inférieur ou égal au besoin brut. Cette "
+                    f"page ne décide pas elle-même ce redéploiement : à vous de valider antenne par antenne "
+                    f"dans l'onglet « Affectation »."
+                )
+
+            st.dataframe(besoins_acq, use_container_width=True, hide_index=True, height=360)
+            st.download_button("⬇️ Télécharger le besoin d'acquisition par antenne (CSV)",
+                                besoins_acq.to_csv(index=False).encode("utf-8"),
+                                "besoin_acquisition_vehicules.csv", "text/csv", key="veh_dl_besoin_acq")
+
+            besoin_affiche = besoins_acq[besoins_acq["Besoin d'acquisition (1 chauffeur = 1 véhicule)"] > 0]
+            if besoin_affiche.empty:
+                st.success("✅ Selon cette règle, aucune antenne n'a actuellement de chauffeur réel sans "
+                           "véhicule dédié.")
+            else:
+                fig = px.bar(
+                    besoin_affiche.sort_values("Besoin d'acquisition (1 chauffeur = 1 véhicule)", ascending=False),
+                    x="Antenne (RH)", y="Besoin d'acquisition (1 chauffeur = 1 véhicule)",
+                    color_discrete_sequence=[RED], title="Véhicules à acquérir par antenne (estimation)",
+                )
+                fig = plotly_base_layout(fig, legend=False)
+                fig.update_layout(yaxis_title="Véhicules à acquérir", xaxis_title="")
+                st.plotly_chart(fig, use_container_width=True)
 
         g1, g2 = st.columns(2)
         with g1:
