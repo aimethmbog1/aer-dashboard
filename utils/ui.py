@@ -81,6 +81,41 @@ def kpi_row(items: list[tuple[str, str, str | None]]):
             st.metric(label, value, delta=delta)
 
 
+def gauge_indicator(
+    value: float, title: str, max_value: float = 100, suffix: str = "%",
+    low_threshold: float = 40, high_threshold: float = 75,
+    low_color: str = RED, mid_color: str = AMBER, high_color: str = GREEN,
+    height: int = 320,
+) -> go.Figure:
+    """Jauge (« meter ») pour un ratio lu contre une limite (taux de
+    couverture, taux de recouvrement, part solaire...) — plus lisible qu'un
+    simple pourcentage en texte pour ce type de métrique. Les seuils bas/haut
+    sont exprimés sur la même échelle que `value` (ex. en %)."""
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=value,
+        number={"suffix": suffix, "font": {"size": 22, "color": NAVY}},
+        title={"text": title, "font": {"size": 13, "color": NAVY}},
+        gauge={
+            "axis": {"range": [0, max_value], "tickwidth": 1, "tickcolor": GREY},
+            "bar": {"color": NAVY, "thickness": 0.32},
+            "bgcolor": "white",
+            "borderwidth": 0,
+            "steps": [
+                {"range": [0, low_threshold], "color": f"{low_color}26"},
+                {"range": [low_threshold, high_threshold], "color": f"{mid_color}26"},
+                {"range": [high_threshold, max_value], "color": f"{high_color}26"},
+            ],
+        },
+    ))
+    fig.update_layout(
+        height=height, margin=dict(l=30, r=30, t=60, b=50),
+        font=dict(family="Segoe UI, Arial, sans-serif", color="#2B2B2B"),
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    return fig
+
+
 def render_sidebar_footer(generated_on: str):
     st.sidebar.markdown("---")
     if generated_on:

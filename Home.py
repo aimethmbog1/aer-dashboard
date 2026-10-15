@@ -3,15 +3,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from utils.data import NAVY, BLUE, GOLD, RED, GREEN, AMBER, CATEGORICAL, STATUS_COLORS
+from utils.data import NAVY, BLUE, GOLD, RED, GREEN, AMBER, GREY, CATEGORICAL, STATUS_COLORS
 from utils.loader import get_data
 from utils.ui import (
     APP_TITLE, PAGE_ICON, inject_base_style, section_title, plotly_base_layout,
-    kpi_row, render_sidebar_footer, status_badge, style_map,
+    kpi_row, gauge_indicator, render_sidebar_footer, status_badge, style_map,
 )
 from utils.vehicules import (
-    get_register as get_vehicules_register, with_age_and_reforme,
-    besoins_acquisition_par_equipe, vehicules_non_affectes_disponibles,
+    get_register as get_vehicules_register, with_age_and_reforme, besoin_acquisition_global,
     EQUIPE_NON_AFFECTEE as VEH_EQUIPE_NON_AFFECTEE, SEUIL_AGE_REFORME_DEFAUT_ANS,
 )
 from utils.revolving import get_register as get_revolving_register, with_derived_columns as revolving_derived
@@ -29,7 +28,8 @@ if data is None:
 st.title(APP_TITLE)
 st.caption(data.generated_on or "")
 st.caption(
-    "Cette page regroupe un résumé de **toutes les pages** de l'application, onglet par onglet. Les pages "
+    "Cette page regroupe un résumé de **toutes les pages** de l'application, onglet par onglet, avec des "
+    "visualisations (jauges, graphiques en anneau, barres) plutôt que de simples nombres. Les pages "
     "« Notes & méthodologie » (texte de méthodologie) et « Rapports » (génération de PDF à partir des "
     "indicateurs déjà résumés ici) n'ont pas de statistiques propres et ne sont donc pas reprises ci-dessous."
 )
@@ -195,31 +195,60 @@ with tab_carte:
             ("Régions couvertes", str(sites["Région"].nunique()), None),
             ("Distance moy. au centre antenne (km)", f"{dist_moy:.1f}" if dist_moy is not None else "—", None),
         ])
-        phase_counts = sites["Phase"].value_counts()
-        if not phase_counts.empty:
-            st.caption("Répartition par phase : " + " · ".join(f"{k} : {v}" for k, v in phase_counts.items()))
+
+        st.write("")
+        cc1, cc2 = st.columns([1, 1.4])
+        with cc1:
+            phase_counts = sites["Phase"].value_counts()
+            if not phase_counts.empty:
+                fig = go.Figure(data=[go.Pie(
+                    labels=phase_counts.index, values=phase_counts.values, hole=0.45,
+                    marker=dict(colors=CATEGORICAL[: len(phase_counts)]),
+                    textinfo="label+percent", sort=False,
+                )])
+                fig.update_layout(title="Sites par phase")
+                fig = plotly_base_layout(fig, height=320, legend=True)
+                st.plotly_chart(fig, use_container_width=True)
+        with cc2:
+            by_antenne = (sites.groupby("Antenne proposée", as_index=False).size()
+                          .sort_values("size", ascending=False).head(8))
+            fig = px.bar(by_antenne, x="size", y="Antenne proposée", orientation="h",
+                         color_discrete_sequence=[BLUE], title="Sites par antenne (top 8)")
+            fig = plotly_base_layout(fig, height=320, legend=False)
+            fig.update_layout(xaxis_title="Sites", yaxis_title="")
+            fig.update_yaxes(categoryorder="total ascending")
+            st.plotly_chart(fig, use_container_width=True)
 
     if det is not None and not det.empty:
         st.write("")
         type_counts = det["Type"].value_counts() if "Type" in det.columns else pd.Series(dtype="int64")
         n_principales = int(type_counts.get("Principale", 0))
-        kpi_row([
-            ("Antennes (organigramme)", str(len(det)), None),
-            ("— dont principales", str(n_principales), None),
-            ("— dont annexes rattachées", str(len(det) - n_principales), None),
-            ("Effectif recommandé (total)", f"{int(det['Effectif total'].sum()):,}", None),
-        ])
-
-    region_source = data.synthese_region
-    if region_source is not None and not region_source.empty and "Niveau" in region_source.columns:
-        top_region = region_source[region_source["Niveau"] == "Sous-total région"].sort_values(
-            "Nb sites", ascending=False)
-        if not top_region.empty:
-            r0 = top_region.iloc[0]
-            st.caption(
-                f"Région la mieux couverte (nombre de sites) : **{r0['Région']}** — {int(r0['Nb sites'])} "
-                f"site(s), {r0['Puissance totale (kWc)']:,.0f} kWc.".replace(",", " ")
-            )
+        n_annexes = len(det) - n_principales
+        oc1, oc2 = st.columns([1, 1.4])
+        with oc1:
+            fig = go.Figure(data=[go.Pie(
+                labels=["Principale", "Annexe rattachée"], values=[n_principales, n_annexes], hole=0.5,
+                marker=dict(colors=[BLUE, GOLD]), textinfo="label+value", sort=False,
+            )])
+            fig.update_layout(title="Antennes — organigramme")
+            fig = plotly_base_layout(fig, height=300, legend=False)
+            st.plotly_chart(fig, use_container_width=True)
+        with oc2:
+            kpi_row([
+                ("Antennes (organigramme)", str(len(det)), None),
+                ("Effectif recommandé (total)", f"{int(det['Effectif total'].sum()):,}".replace(",", " "), None),
+            ])
+            region_source = data.synthese_region
+            if region_source is not None and not region_source.empty and "Niveau" in region_source.columns:
+                top_region = region_source[region_source["Niveau"] == "Sous-total région"].sort_values(
+                    "Nb sites", ascending=False)
+                if not top_region.empty:
+                    r0 = top_region.iloc[0]
+                    st.caption(
+                        f"Région la mieux couverte (nombre de sites) : **{r0['Région']}** — "
+                        f"{int(r0['Nb sites'])} site(s), {r0['Puissance totale (kWc)']:,.0f} kWc."
+                        .replace(",", " ")
+                    )
 
 # =====================================================================
 # Onglet 3 — RH terrain, détail par poste-type (complète, sans dupliquer,
@@ -242,16 +271,30 @@ with tab_rh:
         total = len(standard)
         ok = int((standard["Statut"] == "OK").sum())
         manque = int((standard["Statut"] == "MANQUE").sum())
-        kpi_row([
-            ("Postes-types suivis (16 équipes × 4)", str(total), None),
-            ("Postes pourvus", str(ok), None),
-            ("Postes manquants", str(manque), None),
-            ("Taux de couverture", f"{ok / total:.0%}" if total else "—", None),
-            ("Personnel additionnel (hors profil-type)", str(len(extra)), None),
-        ])
+        taux = (ok / total * 100) if total else 0
+
+        rc1, rc2 = st.columns([1, 1.4])
+        with rc1:
+            fig = gauge_indicator(
+                taux, "Taux de couverture des postes-types", low_threshold=50, high_threshold=85,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        with rc2:
+            fig = go.Figure(data=[go.Pie(
+                labels=["Pourvus", "Manquants"], values=[ok, manque], hole=0.5,
+                marker=dict(colors=[GREEN, RED]), textinfo="label+value", sort=False,
+            )])
+            fig.update_layout(title="Postes-types — pourvus vs manquants")
+            fig = plotly_base_layout(fig, height=320, legend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
         unassigned = data.unassigned
         n_unassigned = 0 if unassigned is None else len(unassigned)
-        st.caption(f"Personnel non affecté à une équipe (toutes antennes) : **{n_unassigned}**.")
+        kpi_row([
+            ("Postes-types suivis (16 équipes × 4)", str(total), None),
+            ("Personnel additionnel (hors profil-type)", str(len(extra)), None),
+            ("Personnel non affecté à une équipe", str(n_unassigned), None),
+        ])
 
 # =====================================================================
 # Onglet 4 — Parc automobile (véhicules, chauffeurs, réforme, acquisition)
@@ -259,9 +302,11 @@ with tab_rh:
 with tab_auto:
     section_title("PARC AUTOMOBILE — VÉHICULES, CHAUFFEURS & RÉFORME")
     st.caption(
-        "Résumé de la page « Parc automobile ». Le registre démarre pré-rempli avec les 12 véhicules réels "
-        "du fichier source et n'est pas persistant d'une session à l'autre — voir cette page pour le détail "
-        "et les actions d'affectation."
+        "Résumé de la page « Parc automobile ». Logique d'acquisition adoptée : un véhicule par chauffeur "
+        "réel (antenne par antenne, en rapprochement avec la répartition des équipes de terrain) + une "
+        "réserve fixe de véhicules pour l'approvisionnement et la coordination, une seule fois pour toute "
+        "la structure. Le registre n'est pas persistant d'une session à l'autre — voir cette page pour le "
+        "détail et les actions d'affectation."
     )
     veh_register = get_vehicules_register()
     if veh_register.empty:
@@ -270,26 +315,62 @@ with tab_auto:
         n_total = len(veh_register)
         n_affectes = int((veh_register["Équipe affectée"] != VEH_EQUIPE_NON_AFFECTEE).sum())
         view_age = with_age_and_reforme(veh_register, SEUIL_AGE_REFORME_DEFAUT_ANS)
-        n_depasse = int((view_age["Statut réforme"] == "Échéance dépassée").sum())
-        n_alerte = int((view_age["Statut réforme"] == "À surveiller (≤ 12 mois)").sum())
-        kpi_row([
-            ("Véhicules au total", str(n_total), None),
-            ("Affectés à une équipe", str(n_affectes), None),
-            ("Non affectés", str(n_total - n_affectes), None),
-            ("Réforme — échéance dépassée", str(n_depasse), None),
-            ("Réforme — à surveiller (≤ 12 mois)", str(n_alerte), None),
-        ])
+        glob = besoin_acquisition_global(veh_register, data.equipes_rows)
 
-        besoins_acq = besoins_acquisition_par_equipe(veh_register, data.equipes_rows)
+        ac1, ac2 = st.columns([1, 1.4])
+        with ac1:
+            fig = gauge_indicator(
+                glob["taux_couverture"], "Couverture du besoin total (chauffeurs + réserve)",
+                low_threshold=50, high_threshold=90,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        with ac2:
+            kpi_row([
+                ("Véhicules au total", str(n_total), None),
+                ("Affectés à une équipe", str(n_affectes), None),
+                ("Besoin net d'acquisition", str(glob["besoin_net_total"]), None),
+            ])
+            st.caption(
+                f"Besoin brut total (chauffeurs réels + {glob['reserve_appro_coordination']} véhicule(s) de "
+                f"réserve appro/coordination pour toute la structure) : **{glob['besoin_brut_total']}**. "
+                f"{glob['pool_non_affecte']} véhicule(s) non affecté(s) mobilisable(s) par redéploiement."
+            )
+
+        st.write("")
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            fig = go.Figure(data=[go.Pie(
+                labels=["Affectés", "Non affectés"], values=[n_affectes, n_total - n_affectes], hole=0.5,
+                marker=dict(colors=[BLUE, GREY]), textinfo="label+value", sort=False,
+            )])
+            fig.update_layout(title="Affectation du parc")
+            fig = plotly_base_layout(fig, height=300, legend=False)
+            st.plotly_chart(fig, use_container_width=True)
+        with bc2:
+            statut_counts = view_age["Statut réforme"].value_counts()
+            colors_reforme = {"OK": GREEN, "À surveiller (≤ 12 mois)": AMBER,
+                               "Échéance dépassée": RED, "Non calculable (année inconnue)": GREY}
+            fig = go.Figure(data=[go.Pie(
+                labels=statut_counts.index, values=statut_counts.values, hole=0.5,
+                marker=dict(colors=[colors_reforme.get(s, GREY) for s in statut_counts.index]),
+                textinfo="percent", sort=False,
+            )])
+            fig.update_layout(title="Échéances de réforme")
+            fig = plotly_base_layout(fig, height=300, legend=True)
+            st.plotly_chart(fig, use_container_width=True)
+
+        besoins_acq = glob["besoins_par_antenne"]
         if not besoins_acq.empty:
-            pool = vehicules_non_affectes_disponibles(veh_register)
-            n_pool = 0 if pool is None else len(pool)
-            total_besoin_brut = int(besoins_acq["Besoin d'acquisition (1 chauffeur = 1 véhicule)"].sum())
-            besoin_net = max(0, total_besoin_brut - n_pool)
-            st.write("")
-            bc1, bc2 = st.columns(2)
-            bc1.metric("Besoin d'acquisition brut (règle : 1 chauffeur = 1 véhicule)", str(total_besoin_brut))
-            bc2.metric("Besoin net (après redéploiement possible)", str(besoin_net))
+            besoin_affiche = besoins_acq[besoins_acq["Besoin d'acquisition (1 chauffeur = 1 véhicule)"] > 0]
+            if not besoin_affiche.empty:
+                fig = px.bar(
+                    besoin_affiche.sort_values("Besoin d'acquisition (1 chauffeur = 1 véhicule)", ascending=False),
+                    x="Antenne (RH)", y="Besoin d'acquisition (1 chauffeur = 1 véhicule)",
+                    color_discrete_sequence=[RED], title="Besoin par antenne (hors réserve appro/coordination)",
+                )
+                fig = plotly_base_layout(fig, legend=False, height=320)
+                fig.update_layout(yaxis_title="Véhicules à acquérir", xaxis_title="")
+                st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================================
 # Onglet 5 — Fonds revolving
@@ -309,12 +390,27 @@ with tab_revolving:
         total_rembourse = revolving_view["Montant remboursé à ce jour (FCFA)"].sum()
         total_solde = revolving_view["Solde restant dû (FCFA)"].sum()
         taux_global = (total_rembourse / total_a_rembourser * 100) if total_a_rembourser else 0
+
+        vc1, vc2 = st.columns([1, 1.4])
+        with vc1:
+            fig = gauge_indicator(taux_global, "Taux de recouvrement", low_threshold=30, high_threshold=70)
+            st.plotly_chart(fig, use_container_width=True)
+        with vc2:
+            counts = revolving_view["Statut"].value_counts()
+            colors_map = {"En cours": BLUE, "Soldé": GREEN, "En retard": AMBER, "Litige": RED}
+            fig = go.Figure(data=[go.Pie(
+                labels=counts.index, values=counts.values, hole=0.5,
+                marker=dict(colors=[colors_map.get(s, GREY) for s in counts.index]),
+                textinfo="label+percent", sort=False,
+            )])
+            fig.update_layout(title="Dossiers par statut")
+            fig = plotly_base_layout(fig, height=320, legend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
         kpi_row([
             ("Dossiers", str(len(revolving_view)), None),
             ("Total engagé (FCFA)", f"{total_cout:,.0f}".replace(",", " "), None),
-            ("Total remboursé (FCFA)", f"{total_rembourse:,.0f}".replace(",", " "), None),
             ("Solde restant dû (FCFA)", f"{total_solde:,.0f}".replace(",", " "), None),
-            ("Taux de recouvrement", f"{taux_global:,.1f} %", None),
         ])
 
 # =====================================================================
@@ -331,18 +427,37 @@ with tab_projets:
     if projets_view.empty:
         st.info("Aucun projet saisi pour l'instant cette session — voir « Suivi de projets » pour en ajouter.")
     else:
-        n_total = len(projets_view)
-        n_en_cours = int((projets_view["Statut"] == "En cours").sum())
-        n_suspendu = int((projets_view["Statut"] == "Suspendu").sum())
-        n_prioritaire = int((projets_view["Région prioritaire (NOSO / Extrême-Nord)"] == "Oui").sum())
+        STATUTS_PROJET_ORDER = ["Planifié", "En cours", "Suspendu", "Repris", "Terminé"]
+        colors_map_prj = {"Planifié": GOLD, "En cours": BLUE, "Suspendu": RED, "Repris": AMBER, "Terminé": GREEN}
+
+        pc1, pc2 = st.columns([1, 1.4])
+        with pc1:
+            counts = projets_view["Statut"].value_counts().reindex(STATUTS_PROJET_ORDER).fillna(0)
+            fig = go.Figure(data=[go.Pie(
+                labels=counts.index, values=counts.values, hole=0.5,
+                marker=dict(colors=[colors_map_prj.get(s, GREY) for s in counts.index]),
+                textinfo="label+percent", sort=False,
+            )])
+            fig.update_layout(title="Projets par statut")
+            fig = plotly_base_layout(fig, height=320, legend=False)
+            st.plotly_chart(fig, use_container_width=True)
+        with pc2:
+            by_region = projets_view.groupby("Région", as_index=False).size().sort_values("size", ascending=False)
+            REGIONS_PRIORITAIRES = ["Nord-Ouest", "Sud-Ouest", "Extrême-Nord"]
+            by_region["Prioritaire"] = by_region["Région"].isin(REGIONS_PRIORITAIRES)
+            fig = px.bar(by_region, x="Région", y="size", color="Prioritaire",
+                         color_discrete_map={True: RED, False: NAVY},
+                         title="Projets par région (rouge = NOSO / Extrême-Nord)")
+            fig = plotly_base_layout(fig, height=320, legend=False)
+            fig.update_layout(yaxis_title="Projets", xaxis_title="")
+            st.plotly_chart(fig, use_container_width=True)
+
         n_prioritaire_bloque = int(((projets_view["Région prioritaire (NOSO / Extrême-Nord)"] == "Oui") &
                                      (projets_view["Statut"].isin(["Planifié", "Suspendu"]))).sum())
         kpi_row([
-            ("Projets suivis", str(n_total), None),
-            ("En cours", str(n_en_cours), None),
-            ("Suspendus", str(n_suspendu), None),
-            ("En région prioritaire (NOSO / Extrême-Nord)", str(n_prioritaire), None),
-            ("Prioritaires à relancer", str(n_prioritaire_bloque), None),
+            ("Projets suivis", str(len(projets_view)), None),
+            ("En cours", str(int((projets_view["Statut"] == "En cours").sum())), None),
+            ("Prioritaires à relancer (NOSO / Extrême-Nord)", str(n_prioritaire_bloque), None),
         ])
 
 # =====================================================================
@@ -366,11 +481,25 @@ with tab_compteurs:
         nb_localites = cpt_df["localite"].nunique() if "localite" in cpt_df else 0
         derniere_periode = cpt_df["periode"].max() if "periode" in cpt_df else None
         nb_solaire = int(cpt_df["solaire"].sum()) if "solaire" in cpt_df else 0
+        taux_solaire = (nb_solaire / total * 100) if total else 0
+
+        qc1, qc2 = st.columns([1, 1.4])
+        with qc1:
+            fig = gauge_indicator(taux_solaire, "Part de compteurs solaires", low_threshold=25, high_threshold=60,
+                                   low_color=GREY, mid_color=AMBER, high_color=GOLD)
+            st.plotly_chart(fig, use_container_width=True)
+        with qc2:
+            top_loc = cpt_df["localite"].value_counts().head(8).reset_index()
+            top_loc.columns = ["Localité", "Compteurs"]
+            fig = px.bar(top_loc.sort_values("Compteurs"), x="Compteurs", y="Localité", orientation="h",
+                         color_discrete_sequence=[NAVY], title="Top 8 localités équipées")
+            fig = plotly_base_layout(fig, height=320, legend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
         kpi_row([
             ("Compteurs installés", f"{total:,}".replace(",", " "), None),
             ("Localités couvertes", str(nb_localites), None),
             ("Dernière période", derniere_periode.strftime("%m/%Y") if pd.notna(derniere_periode) else "—", None),
-            ("Compteurs solaires", f"{nb_solaire / total * 100:.0f} %" if total else "—", None),
         ])
 
 # =====================================================================
@@ -389,12 +518,25 @@ with tab_conseil:
     n_haute = sum(1 for r in recommandations if r["priorite"] == "Haute")
     n_moyenne = sum(1 for r in recommandations if r["priorite"] == "Moyenne")
     n_info = sum(1 for r in recommandations if r["priorite"] == "Info")
-    kpi_row([
-        ("Recommandations totales", str(len(recommandations)), None),
-        ("Priorité haute", str(n_haute), None),
-        ("Priorité moyenne", str(n_moyenne), None),
-        ("Informatives", str(n_info), None),
-    ])
+
+    kc1, kc2 = st.columns([1, 1.4])
+    with kc1:
+        fig = go.Figure(data=[go.Pie(
+            labels=["Haute", "Moyenne", "Info"], values=[n_haute, n_moyenne, n_info], hole=0.5,
+            marker=dict(colors=[RED, AMBER, BLUE]), textinfo="label+value", sort=False,
+        )])
+        fig.update_layout(title="Recommandations par priorité")
+        fig = plotly_base_layout(fig, height=300, legend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    with kc2:
+        if recommandations:
+            by_cat = pd.DataFrame(recommandations)["categorie"].value_counts().reset_index()
+            by_cat.columns = ["Catégorie", "Nombre"]
+            fig = px.bar(by_cat.sort_values("Nombre"), x="Nombre", y="Catégorie", orientation="h",
+                         color_discrete_sequence=[NAVY], title="Recommandations par catégorie")
+            fig = plotly_base_layout(fig, height=300, legend=False)
+            st.plotly_chart(fig, use_container_width=True)
+        kpi_row([("Recommandations totales", str(len(recommandations)), None)])
     if n_haute:
         st.warning(f"⚠️ {n_haute} recommandation(s) de priorité haute — voir « Agent conseil » pour le détail.")
 

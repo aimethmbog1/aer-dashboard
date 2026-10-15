@@ -324,6 +324,60 @@ def besoins_acquisition_par_equipe(register: pd.DataFrame, equipes_rows: pd.Data
     return pd.DataFrame(rows, columns=cols)
 
 
+# ---------------------------------------------------------------------
+# Logique d'acquisition adoptée par l'utilisateur (règle métier fixée, pas
+# une estimation) :
+#   1. chaque chauffeur RÉEL doit disposer d'un véhicule dédié (antenne par
+#      antenne — voir besoins_acquisition_par_equipe ci-dessus) ;
+#   2. PLUS une réserve fixe de véhicules pour l'approvisionnement des sites
+#      et la coordination entre antennes — une seule fois pour TOUTE la
+#      structure (ex. rattachée à la Direction/siège), PAS démultipliée par
+#      antenne.
+# ---------------------------------------------------------------------
+RESERVE_APPRO_COORDINATION = 2
+
+
+def besoin_acquisition_global(register: pd.DataFrame, equipes_rows: pd.DataFrame | None) -> dict:
+    """Besoin d'acquisition total du parc, agrégeant la règle « 1 chauffeur
+    réel = 1 véhicule » (calculée antenne par antenne) et la réserve fixe
+    RESERVE_APPRO_COORDINATION (une seule fois pour toute la structure, pas
+    par antenne). Le besoin net déduit en plus les véhicules déjà dans le
+    parc mais non affectés (mobilisables par redéploiement avant tout achat).
+    Ne modifie jamais le registre — purement une lecture agrégée."""
+    besoins_par_antenne = besoins_acquisition_par_equipe(register, equipes_rows)
+    if besoins_par_antenne.empty:
+        total_chauffeurs = 0
+        total_vehicules_dispo = 0
+        besoin_brut_antennes = 0
+    else:
+        total_chauffeurs = int(besoins_par_antenne["Chauffeurs réels (rôle Chauffeur, statut OK)"].sum())
+        total_vehicules_dispo = int(besoins_par_antenne["Véhicules disponibles (affectés, hors réforme sortie)"].sum())
+        besoin_brut_antennes = int(besoins_par_antenne["Besoin d'acquisition (1 chauffeur = 1 véhicule)"].sum())
+
+    besoin_brut_total = besoin_brut_antennes + RESERVE_APPRO_COORDINATION
+    pool = vehicules_non_affectes_disponibles(register)
+    n_pool = 0 if pool is None else len(pool)
+    besoin_net_total = max(0, besoin_brut_total - n_pool)
+    besoin_total_requis = total_chauffeurs + RESERVE_APPRO_COORDINATION
+    vehicules_utilisables_total = total_vehicules_dispo + n_pool
+    taux_couverture = (min(vehicules_utilisables_total, besoin_total_requis) / besoin_total_requis * 100
+                        if besoin_total_requis else 100.0)
+
+    return {
+        "besoins_par_antenne": besoins_par_antenne,
+        "total_chauffeurs": total_chauffeurs,
+        "total_vehicules_dispo": total_vehicules_dispo,
+        "besoin_brut_antennes": besoin_brut_antennes,
+        "reserve_appro_coordination": RESERVE_APPRO_COORDINATION,
+        "besoin_brut_total": besoin_brut_total,
+        "pool_non_affecte": n_pool,
+        "besoin_net_total": besoin_net_total,
+        "besoin_total_requis": besoin_total_requis,
+        "vehicules_utilisables_total": vehicules_utilisables_total,
+        "taux_couverture": taux_couverture,
+    }
+
+
 def with_age_and_reforme(df: pd.DataFrame, seuil_age_ans: int) -> pd.DataFrame:
     """Ajoute les colonnes calculées : âge, date de réforme suggérée (à partir
     du seuil d'âge choisi dans l'appli) et statut de réforme. La date retenue
