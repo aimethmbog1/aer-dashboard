@@ -189,6 +189,14 @@ carburant, vidanges, chauffeur, réforme), à partir du fichier `gestionnaire_du
   utilise **9 antennes** plus fines, qui ne se recouvrent pas exactement. Le champ « Entité propriétaire »
   reste fidèle au fichier parc auto ; le champ « Équipe affectée » est une affectation optionnelle et
   distincte, vers la vraie liste des antennes RH — jamais une correspondance devinée entre les deux.
+- **Affectation dynamique (onglet « Affectation »)** : affecter un véhicule à une antenne fait apparaître un
+  menu déroulant de chauffeur limité aux agents RÉELS de cette antenne (rôle Chauffeur, statut OK dans la
+  feuille RH) — jamais un nom libre. Trois règles sont appliquées au moment de valider : un véhicule n'a
+  qu'une seule équipe affectée et qu'un seul chauffeur à la fois, et un même chauffeur ne peut être
+  responsable que d'un seul véhicule à la fois (la liste déroulante retire automatiquement les chauffeurs déjà
+  pris). Une édition directe du tableau du registre reste possible mais n'est pas bloquée par ces règles ; la
+  page détecte alors l'incohérence (chauffeur en double, ou chauffeur qui n'appartient pas à l'antenne
+  affectée) et l'affiche explicitement plutôt que de la corriger en silence.
 - **Journal d'utilisation horodaté** (plein de carburant, vidange, entretien, panne — avec quantité, coût,
   kilométrage et chauffeur) plutôt qu'une simple fiche cumulative, pour permettre de vraies statistiques
   (consommation cumulée par véhicule, historique des vidanges). Registre et journal démarrent pré-remplis

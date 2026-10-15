@@ -174,6 +174,98 @@ def equipe_options(equipes_rows: pd.DataFrame | None) -> list[str]:
     return opts
 
 
+CHAUFFEUR_NON_DEFINI = "(aucun chauffeur désigné)"
+
+
+def chauffeurs_reels_antenne(antenne: str | None, equipes_rows: pd.DataFrame | None) -> list[str]:
+    """Chauffeurs RÉELS (agents RH, rôle « Chauffeur », statut OK) rattachés à
+    cette antenne précise — jamais un nom inventé ou tapé librement. Une
+    antenne non choisie, ou sans aucun chauffeur réel en poste, renvoie une
+    liste vide."""
+    if not antenne or equipes_rows is None or equipes_rows.empty:
+        return []
+    needed = {"Antenne", "Rôle", "Statut", "Nom"}
+    if not needed.issubset(equipes_rows.columns):
+        return []
+    subset = equipes_rows[
+        (equipes_rows["Antenne"] == antenne)
+        & (equipes_rows["Rôle"].astype(str).str.strip() == "Chauffeur")
+        & (equipes_rows["Statut"] == "OK")
+    ]
+    noms = subset["Nom"].dropna().astype(str).str.strip()
+    noms = noms[noms != ""]
+    return sorted(noms.unique())
+
+
+def chauffeurs_deja_affectes(register: pd.DataFrame, exclude_vehicule_id: str | None = None) -> dict:
+    """Carte {nom du chauffeur: ID véhicule} pour tous les véhicules déjà
+    dotés d'un chauffeur attitré (hors le véhicule en cours de ré-affectation,
+    s'il y en a un) — sert à garantir qu'un même agent n'est jamais désigné
+    responsable de deux véhicules à la fois (« un agent ne peut se retrouver
+    dans deux antennes »)."""
+    out = {}
+    if register is None or register.empty or "Chauffeur attitré" not in register.columns:
+        return out
+    for _, row in register.iterrows():
+        vid = row.get("ID véhicule")
+        if exclude_vehicule_id is not None and vid == exclude_vehicule_id:
+            continue
+        nom = str(row.get("Chauffeur attitré") or "").strip()
+        if nom:
+            out[nom] = vid
+    return out
+
+
+def chauffeurs_disponibles(antenne: str | None, equipes_rows: pd.DataFrame | None, register: pd.DataFrame,
+                            exclude_vehicule_id: str | None = None) -> tuple[list, dict]:
+    """Options de chauffeur à proposer pour une antenne donnée : les agents
+    RÉELS de cette antenne (rôle Chauffeur, statut OK) qui ne conduisent pas
+    déjà un autre véhicule. Renvoie (options disponibles, {chauffeurs déjà
+    pris ailleurs dans cette antenne: ID véhicule}) pour pouvoir expliquer à
+    l'utilisateur pourquoi la liste peut être vide ou réduite."""
+    reels = chauffeurs_reels_antenne(antenne, equipes_rows)
+    deja_pris = chauffeurs_deja_affectes(register, exclude_vehicule_id)
+    dispo = [c for c in reels if c not in deja_pris]
+    pris_dans_cette_antenne = {c: v for c, v in deja_pris.items() if c in reels}
+    return dispo, pris_dans_cette_antenne
+
+
+def chauffeurs_hors_antenne(register: pd.DataFrame, equipes_rows: pd.DataFrame | None) -> list:
+    """Détecte les véhicules dont le chauffeur attitré n'est PAS un agent réel
+    (rôle Chauffeur, statut OK) de l'équipe affectée du véhicule — typique
+    d'une édition directe du tableau qui change l'équipe sans mettre à jour
+    le chauffeur. Renvoie une liste de dicts {ID véhicule, Équipe affectée,
+    Chauffeur attitré}."""
+    out = []
+    if register is None or register.empty:
+        return out
+    for _, row in register.iterrows():
+        antenne = row.get("Équipe affectée")
+        chauf = str(row.get("Chauffeur attitré") or "").strip()
+        if not chauf or antenne == EQUIPE_NON_AFFECTEE:
+            continue
+        if chauf not in chauffeurs_reels_antenne(antenne, equipes_rows):
+            out.append({"ID véhicule": row.get("ID véhicule"), "Équipe affectée": antenne,
+                         "Chauffeur attitré": chauf})
+    return out
+
+
+def doublons_chauffeurs(register: pd.DataFrame) -> dict:
+    """Détecte, dans le registre TEL QU'IL EST (y compris après une édition
+    libre du tableau), tout chauffeur affecté à plusieurs véhicules à la fois
+    — une incohérence à signaler, jamais à corriger silencieusement. Renvoie
+    {nom du chauffeur: [ID véhicule, ...]} pour les seuls cas en doublon."""
+    if register is None or register.empty or "Chauffeur attitré" not in register.columns:
+        return {}
+    par_chauffeur: dict = {}
+    for _, row in register.iterrows():
+        nom = str(row.get("Chauffeur attitré") or "").strip()
+        if not nom:
+            continue
+        par_chauffeur.setdefault(nom, []).append(row.get("ID véhicule"))
+    return {nom: vids for nom, vids in par_chauffeur.items() if len(vids) > 1}
+
+
 def with_age_and_reforme(df: pd.DataFrame, seuil_age_ans: int) -> pd.DataFrame:
     """Ajoute les colonnes calculées : âge, date de réforme suggérée (à partir
     du seuil d'âge choisi dans l'appli) et statut de réforme. La date retenue

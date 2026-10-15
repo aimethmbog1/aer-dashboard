@@ -9,11 +9,12 @@ from utils.data import NAVY, BLUE, GOLD, RED, GREEN, AMBER, CATEGORICAL
 from utils.ui import PAGE_ICON, inject_base_style, section_title, plotly_base_layout, kpi_row, render_sidebar_footer
 from utils.loader import get_data
 from utils.vehicules import (
-    ENTITES_PARC, EQUIPE_NON_AFFECTEE, TYPES_VEHICULE_OPTIONS, TYPE_NON_RENSEIGNE,
+    ENTITES_PARC, EQUIPE_NON_AFFECTEE, CHAUFFEUR_NON_DEFINI, TYPES_VEHICULE_OPTIONS, TYPE_NON_RENSEIGNE,
     STATUTS_OPERATIONNELS, TYPES_EVENEMENT, REGISTER_COLUMNS, JOURNAL_COLUMNS,
     SEUIL_AGE_REFORME_DEFAUT_ANS,
     get_register, set_register, next_vehicule_id, equipe_options,
     get_journal, set_journal, with_age_and_reforme, journal_summary, besoins_par_equipe,
+    chauffeurs_disponibles, doublons_chauffeurs, chauffeurs_hors_antenne,
 )
 
 st.set_page_config(page_title="Parc automobile — AER", page_icon=PAGE_ICON, layout="wide")
@@ -58,6 +59,13 @@ exactement. Le champ **« Entité propriétaire »** reste donc fidèle au fichi
 **« Équipe affectée »** est une affectation **optionnelle et distincte**, vers la vraie liste des antennes RH,
 pour le suivi logistique fin par équipe.
 
+**Affectation dynamique (onglet « Affectation »)** : le formulaire d'affectation ne propose jamais un nom de
+chauffeur libre — seulement les agents **réels** de l'antenne choisie (rôle Chauffeur, statut OK dans la
+feuille RH) qui ne conduisent pas déjà un autre véhicule. Trois règles sont appliquées : un véhicule n'a
+qu'une seule équipe affectée à la fois, qu'un seul chauffeur à la fois, et un même chauffeur ne peut être
+responsable que d'un seul véhicule à la fois. Une édition directe du tableau du registre reste possible mais
+n'est pas bloquée par ces règles — la page le signale alors explicitement plutôt que de corriger en silence.
+
 **Ce que cette page n'est PAS :**
 - Le type de véhicule, la date d'acquisition précise, le chauffeur attitré, le statut opérationnel et le
   journal d'utilisation ne figurent dans **aucun classeur** : ils forment un registre à compléter, pas une
@@ -96,7 +104,26 @@ with tab_registre:
 
         c1, c2 = st.columns(2)
         n_equipe = c1.selectbox("Équipe affectée (optionnel)", opts_equipes, key="veh_add_equipe")
-        n_chauffeur = c2.text_input("Chauffeur attitré (optionnel)", key="veh_add_chauffeur")
+        if n_equipe == EQUIPE_NON_AFFECTEE:
+            c2.selectbox("Chauffeur responsable", [CHAUFFEUR_NON_DEFINI], disabled=True, key="veh_add_chauffeur_disabled",
+                         help="Choisissez d'abord une équipe affectée pour voir ses chauffeurs réels.")
+            n_chauffeur = None
+        else:
+            dispo, pris = chauffeurs_disponibles(n_equipe, equipes, get_register())
+            options_chauffeur = [CHAUFFEUR_NON_DEFINI] + dispo
+            n_chauffeur = c2.selectbox(
+                f"Chauffeur responsable — agents réels de « {n_equipe} »",
+                options_chauffeur, key="veh_add_chauffeur",
+                help="Liste limitée aux agents RH réels (rôle Chauffeur, statut OK) de cette antenne, "
+                     "qui ne conduisent pas déjà un autre véhicule.",
+            )
+            if not dispo:
+                if pris:
+                    st.caption(f"⚠️ Aucun chauffeur disponible dans « {n_equipe} » : "
+                               f"{', '.join(f'{c} (déjà sur {v})' for c, v in pris.items())}.")
+                else:
+                    st.caption(f"⚠️ Aucun chauffeur réel (rôle Chauffeur, statut OK) recensé dans « {n_equipe} » "
+                               "selon la feuille RH.")
 
         if st.button("Ajouter au registre", type="primary", key="veh_add_btn"):
             if not n_plaque.strip():
@@ -104,6 +131,7 @@ with tab_registre:
             else:
                 reg = get_register()
                 date_reforme = pd.Timestamp(year=int(n_annee) + SEUIL_AGE_REFORME_DEFAUT_ANS, month=1, day=1)
+                chauffeur_retenu = n_chauffeur if (n_chauffeur and n_chauffeur != CHAUFFEUR_NON_DEFINI) else ""
                 new_row = pd.DataFrame([{
                     "ID véhicule": next_vehicule_id(reg),
                     "Entité propriétaire": n_entite,
@@ -114,7 +142,7 @@ with tab_registre:
                     "Type de véhicule": n_type,
                     "Année de mise en service": int(n_annee),
                     "Date d'acquisition (précise)": pd.NaT,
-                    "Chauffeur attitré": n_chauffeur.strip(),
+                    "Chauffeur attitré": chauffeur_retenu,
                     "Statut opérationnel": n_statut,
                     "Date de réforme (retenue)": date_reforme,
                     "Notes": "",
@@ -171,6 +199,99 @@ with tab_registre:
 # Onglet 2 — Affectation
 # =====================================================================
 with tab_affectation:
+    section_title("🧭 AFFECTER / RÉAFFECTER UN VÉHICULE À UNE ANTENNE")
+    st.caption("Le chauffeur proposé est toujours un agent RÉEL de l'équipe RH choisie (rôle Chauffeur, statut "
+               "OK) qui ne conduit pas déjà un autre véhicule — jamais un nom saisi librement. Un véhicule n'a "
+               "qu'une seule équipe affectée et qu'un seul chauffeur à la fois ; un chauffeur ne peut être "
+               "responsable que d'un seul véhicule à la fois.")
+    register = get_register()
+    if register.empty:
+        st.info("Aucun véhicule dans le registre pour l'instant — ajoutez-en un dans l'onglet « Registre des "
+                "véhicules ».")
+    else:
+        with st.container(border=True):
+            labels, label_to_id = [], {}
+            for _, r in register.iterrows():
+                base = f"{r['ID véhicule']} — {r['N° de plaque']} ({r['Marque']})"
+                if r["Équipe affectée"] != EQUIPE_NON_AFFECTEE:
+                    chauf = str(r.get("Chauffeur attitré") or "").strip()
+                    base += (f" — déjà affecté : {r['Équipe affectée']}"
+                             + (f" (chauffeur : {chauf})" if chauf else " (sans chauffeur désigné)"))
+                else:
+                    base += " — non affecté"
+                labels.append(base)
+                label_to_id[base] = r["ID véhicule"]
+
+            aff1, aff2 = st.columns(2)
+            label_choisi = aff1.selectbox("Véhicule à affecter / réaffecter", labels, index=None,
+                                           placeholder="Choisir un véhicule…", key="aff_vehicule")
+            vid_choisi = label_to_id.get(label_choisi) if label_choisi else None
+            antenne_choisie = aff2.selectbox("Équipe affectée (antenne)", opts_equipes, key="aff_equipe")
+
+            chauffeur_choisi = None
+            if antenne_choisie == EQUIPE_NON_AFFECTEE:
+                st.caption("Choisir « (non affecté à une équipe) » retire aussi le chauffeur attitré de ce "
+                           "véhicule.")
+            else:
+                dispo, pris = chauffeurs_disponibles(antenne_choisie, equipes, register, exclude_vehicule_id=vid_choisi)
+                options_chauffeur = [CHAUFFEUR_NON_DEFINI] + dispo
+                chauffeur_choisi = st.selectbox(
+                    f"Chauffeur responsable — agents réels de « {antenne_choisie} »",
+                    options_chauffeur, key="aff_chauffeur",
+                    help="Liste limitée aux agents RH réels (rôle Chauffeur, statut OK) de cette antenne, "
+                         "qui ne conduisent pas déjà un autre véhicule.",
+                )
+                if not dispo:
+                    if pris:
+                        detail = ", ".join(f"{c} (déjà sur {v})" for c, v in pris.items())
+                        st.caption(f"⚠️ Aucun chauffeur disponible dans « {antenne_choisie} » : {detail}.")
+                    else:
+                        st.caption(f"⚠️ Aucun chauffeur réel (rôle Chauffeur, statut OK) recensé dans "
+                                   f"« {antenne_choisie} » selon la feuille RH.")
+
+            if st.button("Valider l'affectation", type="primary", key="aff_btn"):
+                if not vid_choisi:
+                    st.warning("Choisissez un véhicule avant de valider.")
+                else:
+                    reg2 = get_register().copy()
+                    idx = reg2.index[reg2["ID véhicule"] == vid_choisi]
+                    if len(idx) == 0:
+                        st.error("Véhicule introuvable dans le registre (a-t-il été supprimé entre-temps ?).")
+                    else:
+                        i = idx[0]
+                        chauf_retenu = ""
+                        conflit = pd.DataFrame()
+                        if antenne_choisie != EQUIPE_NON_AFFECTEE and chauffeur_choisi and chauffeur_choisi != CHAUFFEUR_NON_DEFINI:
+                            chauf_retenu = chauffeur_choisi
+                            conflit = reg2[(reg2["ID véhicule"] != vid_choisi) & (reg2["Chauffeur attitré"] == chauf_retenu)]
+                        if chauf_retenu and not conflit.empty:
+                            st.error(f"« {chauf_retenu} » est déjà chauffeur du véhicule "
+                                     f"{conflit.iloc[0]['ID véhicule']} — choisissez un autre chauffeur.")
+                        else:
+                            reg2.loc[i, "Équipe affectée"] = antenne_choisie
+                            reg2.loc[i, "Chauffeur attitré"] = chauf_retenu
+                            set_register(reg2)
+                            msg = f"Véhicule {vid_choisi} affecté à « {antenne_choisie} »"
+                            msg += f", chauffeur : {chauf_retenu}." if chauf_retenu else " (sans chauffeur désigné)."
+                            st.success(msg)
+                            st.rerun()
+
+        doublons = doublons_chauffeurs(get_register())
+        if doublons:
+            detail = " ; ".join(f"{nom} → {', '.join(str(v) for v in vids)}" for nom, vids in doublons.items())
+            st.warning(f"⚠️ Incohérence détectée dans le registre (probablement via une édition directe du "
+                       f"tableau) : un même chauffeur apparaît sur plusieurs véhicules — {detail}. Corrigez via "
+                       f"le formulaire ci-dessus ou directement dans le tableau du registre.")
+
+        hors_antenne = chauffeurs_hors_antenne(get_register(), equipes)
+        if hors_antenne:
+            detail2 = " ; ".join(f"{h['ID véhicule']} ({h['Équipe affectée']} / {h['Chauffeur attitré']})"
+                                  for h in hors_antenne)
+            st.warning(f"⚠️ Incohérence détectée : chauffeur attitré qui n'est pas un agent réel (rôle "
+                       f"Chauffeur, statut OK) de l'équipe affectée du véhicule — {detail2}. Probablement une "
+                       f"équipe changée directement dans le tableau sans mettre à jour le chauffeur.")
+
+    st.write("")
     section_title("📍 RÉPARTITION DU PARC PAR ENTITÉ ET PAR ÉQUIPE")
     register = get_register()
     if register.empty:
