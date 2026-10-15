@@ -41,6 +41,7 @@ pages/
   9_📌_Suivi_de_projets.py          Suivi d'avancement des projets d'électrification (registre à alimenter)
   10_📄_Rapports.py                  Génération automatique du rapport de synthèse (PDF)
   11_🤖_Agent_conseil.py             Recommandations priorisées (moteur de règles déterministe)
+  12_🚗_Parc_automobile.py           Registre des véhicules, affectation, carburant/vidanges, réforme
 utils/
   data.py                            Lecture et parsing du classeur (mise en cache)
   geo.py                             Distances (Haversine) et centroïdes d'antenne
@@ -49,6 +50,7 @@ utils/
   projets.py                         Registre de suivi de projets (statut, blocage, région prioritaire)
   conseiller.py                      Moteur de règles de l'agent conseil
   rapports.py                        Génération du PDF de synthèse (fpdf2 + kaleido)
+  vehicules.py                       Registre du parc automobile, journal d'utilisation, réforme
   ui.py                              Composants d'interface & thème partagés
   loader.py                          Chargement du fichier, partagé entre les pages
 data.xlsx                            Classeur AER fourni par défaut
@@ -172,6 +174,37 @@ conception est dans `ANALYSE_STRATEGIQUE_AER.md`, à la racine du projet.
   revolving) et les règles elles-mêmes sont documentées dans un encadré de transparence sur la page. Une
   évolution vers un habillage conversationnel (LLM) reste possible sans changer cette logique si une clé API
   est fournie plus tard — voir l'analyse stratégique pour le détail des options considérées.
+
+## Parc automobile — ce qu'elle fait et ce qu'elle ne fait pas
+
+Répond à une demande de gestion logistique du parc DGOER (immatriculation, affectation aux équipes/antennes,
+carburant, vidanges, chauffeur, réforme), à partir du fichier `gestionnaire_du_parc_auto_DGOER.xlsx` fourni.
+
+- **Ce qui est réel** : les **12 véhicules** du fichier (Direction/siège — y compris sa sous-rubrique
+  « Maîtrise d'œuvre publique » — + 4 antennes), avec plaques, marques et années de mise en service recopiées
+  telles quelles, y compris les **4 plaques incomplètes** (préfixe « CE » seul dans le fichier source) et les
+  **3 années manquantes**, jamais complétées ou devinées.
+- **Incohérence de données signalée, pas masquée** : le fichier parc auto classe les véhicules en **5
+  entités** (ex. « Nord / Extrême-Nord / Adamaoua » regroupés) alors que la feuille RH « Données - Équipes »
+  utilise **9 antennes** plus fines, qui ne se recouvrent pas exactement. Le champ « Entité propriétaire »
+  reste fidèle au fichier parc auto ; le champ « Équipe affectée » est une affectation optionnelle et
+  distincte, vers la vraie liste des antennes RH — jamais une correspondance devinée entre les deux.
+- **Journal d'utilisation horodaté** (plein de carburant, vidange, entretien, panne — avec quantité, coût,
+  kilométrage et chauffeur) plutôt qu'une simple fiche cumulative, pour permettre de vraies statistiques
+  (consommation cumulée par véhicule, historique des vidanges). Registre et journal démarrent pré-remplis
+  (véhicules réels) ou vides (journal) et, comme les autres registres de l'application, ne sont pas
+  persistés entre deux sessions — à exporter/recharger en CSV.
+- **Date de réforme = estimation, pas une règle officielle** : aucune règle de réforme (ni kilométrage, ni
+  durée de vie standard) n'a été communiquée. La page calcule une suggestion à partir d'un **seuil d'âge
+  réglable** (7 ans par défaut) appliqué à l'année de mise en service ; la date retenue manuellement par
+  l'utilisateur, si elle est renseignée, prime toujours sur cette suggestion.
+- **Couverture par antenne = un repère, pas une dotation officielle** : la page signale les antennes RH sans
+  aucun véhicule affecté, mais aucun ratio véhicules/agents officiel n'existe dans les classeurs disponibles
+  — ce n'est donc pas un calcul de besoin validé.
+- **Limite cosmétique connue** : cette version de Streamlit (1.65) affiche le texte littéral « None » au lieu
+  d'une cellule vide pour une date ou un nombre non renseigné dans un tableau modifiable (`st.data_editor`) —
+  un comportement de la bibliothèque, pas une donnée manquante à corriger. Les tableaux en lecture seule
+  (synthèse par véhicule, échéances de réforme) contournent ce rendu et affichent des cellules vides.
 
 ## Points de conception
 
