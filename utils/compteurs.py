@@ -376,3 +376,22 @@ def lot_summary(df: pd.DataFrame) -> pd.DataFrame:
         out["Compteurs solaires"] = g["solaire"].sum().astype(int)
     out = out.reset_index().rename(columns={"nom_fichier": "Fichier (lot)"})
     return out.sort_values("Période")
+
+
+# ---------------------------------------------------------------------------
+# Cache de session pour la page d'accueil — la page « Statistiques des
+# compteurs » recalcule son tableau `df` à chaque exécution à partir des
+# fichiers déposés (aucune donnée persistante entre deux sessions, voir la
+# docstring du module). Pour que la page d'accueil puisse en afficher un
+# résumé SANS réimplémenter toute la logique de lecture/nettoyage, la page
+# des compteurs dépose ici une copie du tableau final (après nettoyage des
+# localités et classement par phase) ; tant qu'aucun fichier n'a été déposé
+# cette session, le cache reste vide et la page d'accueil l'indique
+# explicitement plutôt que d'inventer un chiffre.
+# ---------------------------------------------------------------------------
+def cache_dataframe(df: pd.DataFrame) -> None:
+    st.session_state["compteurs_cache_df"] = df
+
+
+def get_cached_dataframe() -> pd.DataFrame | None:
+    return st.session_state.get("compteurs_cache_df")

@@ -12,7 +12,7 @@ from utils.compteurs import (
     read_excel_sheet_names, load_excel,
     est_format_holley, parse_date_from_filename, build_from_holley_files,
     apply_column_mapping, locality_cleanup_ui, lot_summary, load_official_sites,
-    default_phases, assign_phases,
+    default_phases, assign_phases, cache_dataframe,
 )
 
 st.set_page_config(page_title="Statistiques des compteurs — AER", page_icon=PAGE_ICON, layout="wide")
@@ -166,6 +166,7 @@ with st.sidebar.expander("Définir les phases (dates éditables)", expanded=Fals
     )
     st.session_state["cpt_phases_df"] = phases_editees
 df["phase"] = assign_phases(df, phases_editees)
+cache_dataframe(df)  # pour le résumé de la page d'accueil — voir utils/compteurs.py
 
 # =============================================================================
 # KPI globaux
